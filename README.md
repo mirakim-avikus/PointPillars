@@ -33,6 +33,19 @@ A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI) Detection. [[Z
 ![](./figures/pc_pred_000134.png)
 ![](./figures/img_3dbbox_000134.png)
 
+
+## [Docker] 
+
+Build docker image and make docker container.
+This allows others to develop in exactly the same environment with a single command:
+
+```
+cd PointPillars/
+docker build -t custom-open3d-python-cu111 .
+docker run --name pointpillars --gpus all -it -d --network=host -v $(pwd):/workspace custom-open3d-python-cu111  bash
+```
+
+
 ## [Install] 
 
 Install PointPillars as a python package and all its dependencies as follows:
