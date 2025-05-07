@@ -43,6 +43,9 @@ This allows others to develop in exactly the same environment with a single comm
 cd PointPillars/
 docker build -t custom-open3d-python-cu111 .
 docker run --name pointpillars --gpus all -it -d --network=host -v $(pwd):/workspace custom-open3d-python-cu111  bash
+
+// for Avikus server with four A100
+docker run -d --runtime=nvidia --gpus all  -it -d -v $(pwd):/workspace   --device=/dev/nvidia-uvm     --device=/dev/nvidia-uvm-tools     --device=/dev/nvidia-modeset     --device=/dev/nvidiactl     --device=/dev/nvidia0   --device=/dev/nvidia1  --device=/dev/nvidia2  --device=/dev/nvidia3  custom-open3d-python-cu111  bash -c "while [ true ]; do nvidia-smi -L; sleep 5; done"
 ```
 
 
