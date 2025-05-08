@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y \
     git wget curl build-essential cmake libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y libglib2.0-0
+
 RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
 
