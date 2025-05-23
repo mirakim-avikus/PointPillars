@@ -1,5 +1,6 @@
 import numpy as np
 import pdb
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +8,7 @@ from pointpillars.model.anchors import Anchors, anchor_target, anchors2bboxes
 from pointpillars.ops import Voxelization, nms_cuda
 from pointpillars.utils import limit_period
 
+AVIKUS = True
 
 class PillarLayer(nn.Module):
     def __init__(self, voxel_size, point_cloud_range, max_num_points, max_voxels):
@@ -51,8 +53,8 @@ class PillarEncoder(nn.Module):
         self.vx, self.vy = voxel_size[0], voxel_size[1]
         self.x_offset = voxel_size[0] / 2 + point_cloud_range[0]
         self.y_offset = voxel_size[1] / 2 + point_cloud_range[1]
-        self.x_l = int((point_cloud_range[3] - point_cloud_range[0]) / voxel_size[0])
-        self.y_l = int((point_cloud_range[4] - point_cloud_range[1]) / voxel_size[1])
+        self.x_l = math.ceil((point_cloud_range[3] - point_cloud_range[0]) / voxel_size[0])
+        self.y_l = math.ceil((point_cloud_range[4] - point_cloud_range[1]) / voxel_size[1])
 
         self.conv = nn.Conv1d(in_channel, out_channel, 1, bias=False)
         self.bn = nn.BatchNorm1d(out_channel, eps=1e-3, momentum=0.01)
@@ -175,9 +177,20 @@ class Neck(nn.Module):
         return: (bs, 384, 248, 216)
         '''
         outs = []
+        target_h = max([feat.shape[2] for feat in x]) 
+        target_w = max([feat.shape[3] for feat in x]) 
+    
         for i in range(len(self.decoder_blocks)):
-            xi = self.decoder_blocks[i](x[i]) # (bs, 128, 248, 216)
-            outs.append(xi)
+            xi = self.decoder_blocks[i](x[i]) 
+            h, w = xi.shape[2], xi.shape[3]
+
+            pad_h = target_h - h
+            pad_w = target_w - w
+            padding = (0, pad_w, 0, pad_h)
+
+            xi_padded = F.pad(xi, padding, mode='constant', value=0)
+            outs.append(xi_padded)
+
         out = torch.cat(outs, dim=1)
         return out
 
@@ -223,7 +236,8 @@ class PointPillars(nn.Module):
                  voxel_size=[0.16, 0.16, 4],
                  point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1],
                  max_num_points=32,
-                 max_voxels=(16000, 40000)):
+                 max_voxels=(16000, 40000), 
+                 prefix='kitti'):
         super().__init__()
         self.nclasses = nclasses
         self.pillar_layer = PillarLayer(voxel_size=voxel_size, 
@@ -243,10 +257,17 @@ class PointPillars(nn.Module):
         self.head = Head(in_channel=384, n_anchors=2*nclasses, n_classes=nclasses)
         
         # anchors
-        ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                    [0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                    [0, -39.68, -1.78, 69.12, 39.68, -1.78]]
-        sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+        if 'avikus' in prefix:
+            ranges = [[0, -100.0, -5.0, 250.0, 100.0, 5.0],
+                        [0, -100.0, -5.0, 250.0, 100.0, 5.0],
+                        [0, -100.0, -5.0, 250.0, 100.0, 5.0]]
+            sizes = [[6.40, 2.2, 2.6], [7.80, 2.3, 2.5], [8.5, 2.3, 2.9]]
+        else:
+            ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
+                        [0, -39.68, -0.6, 69.12, 39.68, -0.6],
+                        [0, -39.68, -1.78, 69.12, 39.68, -1.78]]
+            sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+
         rotations=[0, 1.57]
         self.anchors_generator = Anchors(ranges=ranges, 
                                          sizes=sizes, 

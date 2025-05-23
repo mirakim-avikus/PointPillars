@@ -7,3 +7,11 @@ tmp/
 results/
 *.sh
 .idea
+data/avikus/motorboat/005/annos_dir/1736092769837.txt
+data/avikus/motorboat/005/calib_005.txt
+data/avikus/motorboat/005/camera/1736092769839.jpg
+data/avikus/motorboat/005/lidar/Data/1736092769837.avikus.pcd
+data/avikus/motorboat/cars/camera/1747113334782.jpg
+data/avikus/motorboat/cars/lidar/Data/1747113334772.avikus.pcd
+inference.sh
+test_avikus.py

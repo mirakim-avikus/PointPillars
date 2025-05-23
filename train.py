@@ -3,13 +3,36 @@ import os
 import torch
 from tqdm import tqdm
 import pdb
+import cv2
+import yaml
+import numpy as np
 
-from pointpillars.utils import setup_seed
-from pointpillars.dataset import Kitti, get_dataloader
+from pointpillars.utils import setup_seed, vis_pc, keep_bbox_from_image_range, bbox3d2corners_camera, vis_img_3d, read_calib, bbox3d2corners, keep_bbox_from_lidar_range, read_label, points_camera2image, bbox_camera2lidar
+from pointpillars.dataset import Kitti, Avikus, get_dataloader
 from pointpillars.model import PointPillars
 from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
 
+CLASSES = {
+    'Pedestrian': 0, 
+    'Cyclist': 1, 
+    'Car': 2
+    }
+
+def find_closest_lidar(lidar_dir, data_name):
+    lidar_list = sorted(os.listdir(lidar_dir))
+    img_ts = int(data_name)
+    if (img_ts < lidar_list[0].split('.')[0]):
+        return lidar_list[0].split('.')[0]
+    elif (img_ts > lidar_list[-1].split('.')[0]):
+        return lidar_list[-1].split('.')[0]
+    for i in range(len(lidar_list)-1):
+        curr_lidar_ts = int(lidar_list[i].split('.')[0])
+        post_lidar_ts = int(lidar_list[i+1].split('.')[0])
+        if (abs(img_ts - curr_lidar_ts) < abs(img_ts - post_lidar_ts)):
+            return curr_lidar_ts
+    return curr_lidar_ts
+    
 def save_summary(writer, loss_dict, global_step, tag, lr=None, momentum=None):
     for k, v in loss_dict.items():
         writer.add_scalar(f'{tag}/{k}', v, global_step)
@@ -21,10 +44,18 @@ def save_summary(writer, loss_dict, global_step, tag, lr=None, momentum=None):
 
 def main(args):
     setup_seed()
-    train_dataset = Kitti(data_root=args.data_root,
-                          split='train')
-    val_dataset = Kitti(data_root=args.data_root,
-                        split='val')
+    prefix = args.data_root
+    if 'avikus' in prefix:
+        train_dataset = Avikus(data_root=args.data_root,
+                            split='train')
+        val_dataset = Avikus(data_root=args.data_root,
+                            split='val')
+    else:
+        train_dataset = Kitti(data_root=args.data_root,
+                            split='train')
+        val_dataset = Kitti(data_root=args.data_root,
+                            split='val')
+
     train_dataloader = get_dataloader(dataset=train_dataset, 
                                       batch_size=args.batch_size, 
                                       num_workers=args.num_workers,
@@ -34,11 +65,29 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    if not args.no_cuda:
-        pointpillars = PointPillars(nclasses=args.nclasses).cuda()
+    if 'avikus' in prefix:
+        point_cloud_range=[0, -50., -10., 250., 50., 10.]
+        pcd_limit_range = np.array([0.0, -50.0, -10.0, 200.0, 50.0, 10.0], dtype=np.float32)
+        voxel_size=[0.5, 0.5, 4]
     else:
-        pointpillars = PointPillars(nclasses=args.nclasses)
+        point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]
+        pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
+        voxel_size=[0.16, 0.16, 4]
+
+    if not args.no_cuda:
+        if 'avikus' in prefix:
+            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size, prefix='avikus').cuda()
+        else:
+            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size, prefix='kitti').cuda()
+    else:
+        if 'avikus' in prefix:
+            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size,  prefix='avikus')
+        else:
+            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size,  prefix='kitti')
     loss_func = Loss()
+
+    # load pretrained weight 
+    pointpillars.load_state_dict(torch.load("pretrained/epoch_160.pth"))
 
     max_iters = len(train_dataloader) * args.max_epoch
     init_lr = args.init_lr
@@ -78,6 +127,10 @@ def main(args):
             batched_gt_bboxes = data_dict['batched_gt_bboxes']
             batched_labels = data_dict['batched_labels']
             batched_difficulty = data_dict['batched_difficulty']
+
+            # visualize GT bbox
+            # vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
+
             bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
                 pointpillars(batched_pts=batched_pts, 
                              mode='train',
@@ -97,6 +150,7 @@ def main(args):
             
             pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < args.nclasses)
             bbox_pred = bbox_pred[pos_idx]
+            bbox_pred_vis = bbox_pred.detach().clone()
             batched_bbox_reg = batched_bbox_reg[pos_idx]
             # sin(a - b) = sin(a)*cos(b) - cos(a)*sin(b)
             bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1].clone()) * torch.cos(batched_bbox_reg[:, -1].clone())
@@ -108,6 +162,8 @@ def main(args):
             bbox_cls_pred = bbox_cls_pred[batched_label_weights > 0]
             batched_bbox_labels[batched_bbox_labels < 0] = args.nclasses
             batched_bbox_labels = batched_bbox_labels[batched_label_weights > 0]
+
+            # vis_pc(batched_pts[0].cpu().numpy(), bboxes=bbox_pred_vis[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
 
             loss_dict = loss_func(bbox_cls_pred=bbox_cls_pred,
                                   bbox_pred=bbox_pred,
@@ -135,6 +191,7 @@ def main(args):
 
         if epoch % 2 == 0:
             continue
+
         pointpillars.eval()
         with torch.no_grad():
             for i, data_dict in enumerate(tqdm(val_dataloader)):
@@ -149,15 +206,15 @@ def main(args):
                 batched_gt_bboxes = data_dict['batched_gt_bboxes']
                 batched_labels = data_dict['batched_labels']
                 batched_difficulty = data_dict['batched_difficulty']
-                bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
+
+                orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, anchor_target_dict = \
                     pointpillars(batched_pts=batched_pts, 
                                 mode='train',
                                 batched_gt_bboxes=batched_gt_bboxes, 
                                 batched_gt_labels=batched_labels)
-                
-                bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, args.nclasses)
-                bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
-                bbox_dir_cls_pred = bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
+                bbox_cls_pred = orig_bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, args.nclasses)
+                bbox_pred = orig_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
+                bbox_dir_cls_pred = orig_bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
 
                 batched_bbox_labels = anchor_target_dict['batched_labels'].reshape(-1)
                 batched_label_weights = anchor_target_dict['batched_label_weights'].reshape(-1)
@@ -187,10 +244,118 @@ def main(args):
                                     num_cls_pos=num_cls_pos, 
                                     batched_bbox_reg=batched_bbox_reg, 
                                     batched_dir_labels=batched_dir_labels)
-                
+                # visualize image
+                # vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
+
+                # visualize image
+                device = orig_bbox_cls_pred.device
+                feature_map_size = torch.tensor(list(orig_bbox_cls_pred.size()[-2:]), device=device)
+                anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
+                batch_size = len(batched_pts)
+                batched_anchors = [anchors for _ in range(batch_size)]
+                result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
+
+                data_name = os.path.basename(data_dict['batched_img_info'][0]['image_path']).split('.')[0]
+
+                if 'kitti' in prefix:
+                    gt_path = os.path.join(args.data_root, 'training', 'label_2', f'{data_name}.txt')
+                    calib_path = os.path.join(args.data_root, 'training', 'calib', f'{data_name}.txt')
+                    img_path = os.path.join(args.data_root, data_dict['batched_img_info'][0]['image_path'])
+                    calib_info = read_calib(calib_path)
+                    tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
+
+                else:   # avikus
+                    lidar_dir = os.path.join(args.data_root, 'lidar', 'Data')
+                    lidar_name = find_closest_lidar(lidar_dir, data_name)
+                    gt_path = os.path.join(args.data_root,  'annos_dir', f'{lidar_name}.txt')
+                    calib_path = os.path.join(args.data_root, 'calib_005.txt')
+                    img_path = os.path.join(*args.data_root.split('/')[:-2], data_dict['batched_img_info'][0]['image_path'])
+
+                    data_root = args.data_root
+                    calib_path_yaml = os.path.join(*data_root.split('/')[:-1],"lidar.yaml")
+                    with open(calib_path_yaml, 'rb') as f:
+                        calib = yaml.safe_load(f)
+                    cam = calib['camera']
+                    K = np.array([
+                        [cam['fx'], cam['skew'], cam['cx']],
+                        [0, cam['fy'], cam['cy']],
+                        [0, 0, 1]
+                    ], dtype = np.float32)
+                    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+
+                    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+                    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
+
+                    R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
+                    lidar2avi = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])   # lidar2avikus
+                    tr_velo_to_cam_3x3 = R@lidar2avi                            # lidar2camera
+
+                    tr_velo_to_cam = np.identity(4)
+                    tr_velo_to_cam[:3, :3] = tr_velo_to_cam_3x3
+                    tr_velo_to_cam[:3, -1] = tvec
+
+                calib_info = read_calib(calib_path)
+                gt_label = read_label(gt_path)
+
+                r0_rect = calib_info['R0_rect'].astype(np.float32)
+                P2 = calib_info['P2'].astype(np.float32)
+
+                img = cv2.imread(img_path, 1)
+                image_shape = img.shape[:2]
+                if 'kitti' in prefix:
+                    result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, prefix='kitti')
+                else:
+                    result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
+                result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
+                lidar_bboxes = result_filter['lidar_bboxes']
+                labels, scores = result_filter['labels'], result_filter['scores']
+
+                dimensions = gt_label['dimensions']
+                location = gt_label['location']
+                rotation_y = gt_label['rotation_y']
+                gt_labels = np.array([CLASSES.get(item, -1) for item in gt_label['name']])
+                if 'kitti' in prefix:
+                    sel = gt_labels != -1
+                else:
+                    sel = [True for _ in range(len(gt_labels))]
+                gt_labels = gt_labels[sel]
+                bboxes_camera = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
+                gt_lidar_bboxes = bbox_camera2lidar(bboxes_camera, tr_velo_to_cam, r0_rect)
+                bboxes_camera = bboxes_camera[sel]
+                gt_lidar_bboxes = gt_lidar_bboxes[sel]
+
+                gt_labels = [-1] * len(gt_label['name']) # to distinguish between the ground truth and the predictions
+                    
+                pred_gt_lidar_bboxes = np.concatenate([lidar_bboxes, gt_lidar_bboxes], axis=0)
+                pred_gt_labels = np.concatenate([labels, gt_labels])
+
+                # vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
+                # pdb.set_trace()
+
+                bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes'] 
+                bboxes_corners = bbox3d2corners_camera(camera_bboxes)
+                if 'kitti' in prefix:
+                    image_points = points_camera2image(bboxes_corners, P2)
+                else:   # 'avikus'
+                    points_normalized = bboxes_corners[:, :, :2] / bboxes_corners[:, :, 2:]
+                    points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D)
+                    image_points = points_distorted.reshape(bboxes_corners.shape[0], -1, 2)
+
+                img = vis_img_3d(img, image_points, labels, rt=True)
+                os.makedirs('result_imgs', exist_ok=True)
+                cv2.imwrite(f'result_imgs/{data_name}-3d-bbox_{epoch}.png', img)
+
                 global_step = epoch * len(val_dataloader) + val_step + 1
                 if global_step % args.log_freq == 0:
                     save_summary(writer, loss_dict, global_step, 'val')
+                    # add projected image w/ bbox
+                    if 'avikus' in prefix:
+                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+                        writer.add_image('3D_BBox_Prediction', img_tensor[0], global_step)
+                    else:
+                        continue
+
                 val_step += 1
         pointpillars.train()
 
@@ -200,8 +365,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_root', default='/mnt/ssd1/lifa_rdata/det/kitti', 
                         help='your data root for kitti')
     parser.add_argument('--saved_path', default='pillar_logs')
-    parser.add_argument('--batch_size', type=int, default=6)
-    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--nclasses', type=int, default=3)
     parser.add_argument('--init_lr', type=float, default=0.00025)
     parser.add_argument('--max_epoch', type=int, default=160)

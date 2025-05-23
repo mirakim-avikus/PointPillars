@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import pickle
+import struct
 
 
 def read_pickle(file_path, suffix='.pkl'):
@@ -17,19 +18,84 @@ def write_pickle(results, file_path):
 
 def read_points(file_path, dim=4):
     suffix = os.path.splitext(file_path)[1] 
-    assert suffix in ['.bin', '.ply']
+    assert suffix in ['.bin', '.ply', '.pcd']
     if suffix == '.bin':
         return np.fromfile(file_path, dtype=np.float32).reshape(-1, dim)
+    elif suffix == '.pcd':
+        # .pcd in BINARY format
+        with open(file_path, 'rb') as f:
+            content = f.read()
+
+        header_end = content.find(b'DATA binary') + len(b'DATA binary\n')
+        header = content[:header_end]
+        data = content[header_end:]
+
+        lines = header.split(b'\n')
+        for line in lines:
+            if line.startswith(b'FIELDS'):
+                fields = line.strip().split()[1:]
+            elif line.startswith(b'SIZE'):
+                sizes = list(map(int, line.strip().split()[1:]))
+            elif line.startswith(b'TYPE'):
+                types = line.strip().split()[1:]
+            elif line.startswith(b'COUNT'):
+                counts = list(map(int, line.strip().split()[1:]))
+            elif line.startswith(b'POINTS'):
+                num_points = int(line.strip().split()[1])
+
+        assert all(field in fields for field in [b'x', b'y', b'z', b'intensity'])
+
+        field_idx = {name: idx for idx, name in enumerate(fields)}
+        point_step = sum(sizes[i] * counts[i] for i in range(len(sizes)))
+        assert len(data) >= num_points * point_step
+
+        points = []
+        for i in range(num_points):
+            offset = i * point_step
+            point_bytes = data[offset : offset + point_step]
+            values = struct.unpack('<' + ''.join(['f' for _ in fields]), point_bytes)
+
+            point = [
+                values[field_idx[b'x']],
+                values[field_idx[b'y']],
+                values[field_idx[b'z']],
+                values[field_idx[b'intensity']]
+            ]
+            points.append(point)
+
+        return np.array(points, dtype=np.float32)
     else:
         raise NotImplementedError
 
 
 def write_points(lidar_points, file_path):
     suffix = os.path.splitext(file_path)[1] 
-    assert suffix in ['.bin', '.ply']
+    assert suffix in ['.bin', '.pcd', '.ply']
     if suffix == '.bin':
         with open(file_path, 'w') as f:
             lidar_points.tofile(f)
+    elif suffix == '.pcd':
+        num_points = lidar_points.shape[0]
+
+        # PCD 헤더 작성 (binary format)
+        header = f"""# .PCD v0.7 - Point Cloud Data file format
+            VERSION 0.7
+            FIELDS x y z intensity
+            SIZE 4 4 4 4
+            TYPE F F F F
+            COUNT 1 1 1 1
+            WIDTH {num_points}
+            HEIGHT 1
+            VIEWPOINT 0 0 0 1 0 0 0
+            POINTS {num_points}
+            DATA binary
+            """
+
+        # header를 먼저 텍스트로 쓰고, 그 뒤에 binary 데이터 추가
+        with open(file_path, 'wb') as f:
+            f.write(header.encode('utf-8'))
+            f.write(b'\n')  # 헤더 끝에 줄바꿈
+            f.write(lidar_points.astype(np.float32).tobytes())
     else:
         raise NotImplementedError
 

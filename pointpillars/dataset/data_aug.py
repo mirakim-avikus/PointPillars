@@ -351,7 +351,7 @@ def data_augment(CLASSES, data_root, data_dict, data_aug_config):
     # 7. points shuffle
     data_dict = points_shuffle(data_dict)
 
-    # # 8. filter bboxes with label=-1
-    # data_dict = filter_bboxes_with_labels(data_dict)
+    # 8. filter bboxes with label=-1
+    data_dict = filter_bboxes_with_labels(data_dict)
     
     return data_dict

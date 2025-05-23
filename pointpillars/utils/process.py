@@ -3,9 +3,9 @@ import numba
 import numpy as np
 import random
 import torch
+import cv2
 import pdb
 from pointpillars.ops.iou3d_module import boxes_overlap_bev, boxes_iou_bev
-
 
 def setup_seed(seed=0, deterministic = True):
     random.seed(seed)
@@ -32,6 +32,20 @@ def bbox_camera2lidar(bboxes, tr_velo_to_cam, r0_rect):
     bboxes_lidar = np.concatenate([xyz[:, :3], xyz_size, bboxes[:, 6:]], axis=1)
     return np.array(bboxes_lidar, dtype=np.float32)
 
+def bbox_avikus2lidar(bboxes, tr_velo_to_cam, r0_rect):
+    '''
+    bboxes: shape=(N, 7)
+    tr_velo_to_cam: shape=(4, 4)
+    r0_rect: shape=(4, 4)
+    return: shape=(N, 7)
+    '''
+    x_size, y_size, z_size = bboxes[:, 3:4], bboxes[:, 4:5], bboxes[:, 5:6]
+    xyz_size = np.concatenate([x_size, y_size, z_size], axis=1)
+    extended_xyz = np.pad(bboxes[:, :3], ((0, 0), (0, 1)), 'constant', constant_values=1.0)
+    rt_mat = np.linalg.inv(r0_rect @ tr_velo_to_cam)
+    xyz = extended_xyz @ rt_mat.T
+    bboxes_lidar = np.concatenate([xyz[:, :3], xyz_size, bboxes[:, 6:]], axis=1)
+    return np.array(bboxes_lidar, dtype=np.float32)
 
 def bbox_lidar2camera(bboxes, tr_velo_to_cam, r0_rect):
     '''
@@ -547,7 +561,7 @@ def iou_bev(bboxes1, bboxes2):
     return bev_overlap
 
 
-def keep_bbox_from_image_range(result, tr_velo_to_cam, r0_rect, P2, image_shape):
+def keep_bbox_from_image_range(result, tr_velo_to_cam, r0_rect, P2, image_shape, prefix, K=None, D=None):
     '''
     result: dict(lidar_bboxes, labels, scores)
     tr_velo_to_cam: shape=(4, 4)
@@ -563,7 +577,12 @@ def keep_bbox_from_image_range(result, tr_velo_to_cam, r0_rect, P2, image_shape)
     scores = result['scores']
     camera_bboxes = bbox_lidar2camera(lidar_bboxes, tr_velo_to_cam, r0_rect) # (n, 7)
     bboxes_points = bbox3d2corners_camera(camera_bboxes) # (n, 8, 3)
-    image_points = points_camera2image(bboxes_points, P2) # (n, 8, 2)
+    if 'avikus' in prefix:
+        points_normalized = bboxes_points[:, :, :2] / bboxes_points[:, :, 2:]
+        points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D) # (n*8, 1, 2)
+        image_points = points_distorted.reshape(bboxes_points.shape[0], -1, 2)
+    else:
+        image_points = points_camera2image(bboxes_points, P2) # (n, 8, 2)    image_x1y1 = np.min(image_points, axis=1) # (n, 2)
     image_x1y1 = np.min(image_points, axis=1) # (n, 2)
     image_x1y1 = np.maximum(image_x1y1, 0)
     image_x2y2 = np.max(image_points, axis=1) # (n, 2)
