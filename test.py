@@ -4,6 +4,7 @@ import numpy as np
 import os
 import torch
 import pdb
+import yaml
 
 from pointpillars.utils import setup_seed, read_points, read_calib, read_label, \
     keep_bbox_from_image_range, keep_bbox_from_lidar_range, vis_pc, \
@@ -30,25 +31,47 @@ def point_range_filter(pts, point_range=[0, -39.68, -3, 69.12, 39.68, 1]):
 
 def main(args):
     CLASSES = {
-        'Pedestrian': 0, 
-        'Cyclist': 1, 
-        'Car': 2
+        'motorboat': 2
         }
     LABEL2CLASSES = {v:k for k, v in CLASSES.items()}
-    pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
+    pcd_limit_range = np.array([0, -50., -10., 250., 50., 10.], dtype=np.float32)
+
+    calib_path = args.calib_path
+    calib_path_yaml = os.path.join(*calib_path.split('/')[:-1],"lidar.yaml")
+    with open(calib_path_yaml, 'rb') as f:
+        calib = yaml.safe_load(f)
+
+    cam = calib['camera']
+    K = np.array([
+        [cam['fx'], cam['skew'], cam['cx']],
+        [0, cam['fy'], cam['cy']],
+        [0, 0, 1]
+    ], dtype = np.float32)
+    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
+
+    tr_velo_to_cam, _ = cv2.Rodrigues(rvec)
+    tr_velo_to_cam_4x4 = np.identity(4)
+    tr_velo_to_cam_4x4[:3, :3] = tr_velo_to_cam
+    tr_velo_to_cam_4x4[:3, -1] = tvec
+
+    point_cloud_range=[0, -50., -10., 250., 50., 10.]
+    voxel_size=[0.16, 0.16, 4]
 
     if not args.no_cuda:
-        model = PointPillars(nclasses=len(CLASSES)).cuda()
+        model = PointPillars(nclasses=3, point_cloud_range=point_cloud_range, voxel_size = voxel_size, prefix='avikus').cuda()
         model.load_state_dict(torch.load(args.ckpt))
     else:
-        model = PointPillars(nclasses=len(CLASSES))
+        model = PointPillars(nclasses=3)
         model.load_state_dict(
             torch.load(args.ckpt, map_location=torch.device('cpu')))
     
     if not os.path.exists(args.pc_path):
         raise FileNotFoundError 
     pc = read_points(args.pc_path)
-    pc = point_range_filter(pc)
+    pc[:, 3] = pc[:, 3] / 255.                  # intensity normalization
+    pc = point_range_filter(pc, point_range=[0, -50., -10., 250., 50., 10.])
     pc_torch = torch.from_numpy(pc)
     if os.path.exists(args.calib_path):
         calib_info = read_calib(args.calib_path)
@@ -73,12 +96,12 @@ def main(args):
         result_filter = model(batched_pts=[pc_torch], 
                               mode='test')[0]
     if calib_info is not None and img is not None:
-        tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
+        # tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
         r0_rect = calib_info['R0_rect'].astype(np.float32)
         P2 = calib_info['P2'].astype(np.float32)
 
         image_shape = img.shape[:2]
-        result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape)
+        result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam_4x4, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
 
     result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
     lidar_bboxes = result_filter['lidar_bboxes']
@@ -89,11 +112,13 @@ def main(args):
     if calib_info is not None and img is not None:
         bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes'] 
         bboxes_corners = bbox3d2corners_camera(camera_bboxes)
-        image_points = points_camera2image(bboxes_corners, P2)
+        points_normalized = bboxes_corners[:, :, :2] / bboxes_corners[:, :, 2:]
+        points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D)
+        image_points = points_distorted.reshape(bboxes_corners.shape[0], -1, 2)
         img = vis_img_3d(img, image_points, labels, rt=True)
 
     if calib_info is not None and gt_label is not None:
-        tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
+        # tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
         r0_rect = calib_info['R0_rect'].astype(np.float32)
 
         dimensions = gt_label['dimensions']
@@ -103,7 +128,7 @@ def main(args):
         sel = gt_labels != -1
         gt_labels = gt_labels[sel]
         bboxes_camera = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
-        gt_lidar_bboxes = bbox_camera2lidar(bboxes_camera, tr_velo_to_cam, r0_rect)
+        gt_lidar_bboxes = bbox_camera2lidar(bboxes_camera, tr_velo_to_cam_4x4, r0_rect)
         bboxes_camera = bboxes_camera[sel]
         gt_lidar_bboxes = gt_lidar_bboxes[sel]
 
@@ -111,17 +136,18 @@ def main(args):
         
         pred_gt_lidar_bboxes = np.concatenate([lidar_bboxes, gt_lidar_bboxes], axis=0)
         pred_gt_labels = np.concatenate([labels, gt_labels])
-        vis_pc(pc, pred_gt_lidar_bboxes, labels=pred_gt_labels)
+        vis_pc(pc, gt_lidar_bboxes, labels=pred_gt_labels)
 
         if img is not None:
             bboxes_corners = bbox3d2corners_camera(bboxes_camera)
-            image_points = points_camera2image(bboxes_corners, P2)
+            points_normalized = bboxes_corners[:, :, :2] / bboxes_corners[:, :, 2:]
+            points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D)
+            image_points = points_distorted.reshape(bboxes_corners.shape[0], -1, 2)
             gt_labels = [-1] * len(gt_label['name'])
             img = vis_img_3d(img, image_points, gt_labels, rt=True)
     
     if calib_info is not None and img is not None:
-        cv2.imshow(f'{os.path.basename(args.img_path)}-3d bbox', img)
-        cv2.waitKey(0)
+        cv2.imwrite(f'{os.path.basename(args.img_path)}-3d_bbox.jpg', img)
             
         
 if __name__ == '__main__':

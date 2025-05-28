@@ -75,7 +75,6 @@ def main(args):
     if not os.path.exists(args.pc_path):
         raise FileNotFoundError 
     pc = read_points(args.pc_path)              # avikus coord
-    pc[:, 1:3] *= -1                            # avikus2lidar transformation [x, -y, -z]
     pc[:, 3] = pc[:, 3] / 255.                  # intensity normalization
     pc = point_range_filter(pc)
     pc_torch = torch.from_numpy(pc)

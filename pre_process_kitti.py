@@ -40,25 +40,28 @@ def judge_difficulty(annotation_dict, prefix='kitti'):
     return np.array(difficultys, dtype=np.int32)
 
 def find_closest_img(data_root, lidar_ts):
-    image_list = sorted(os.listdir(os.path.join(data_root, 'camera')))
-    if (int(image_list[-1].split('.')[0]) < int(lidar_ts)) : 
-        return image_list[0].split('.')[0]
-    if (int(image_list[0].split('.')[0]) > int(lidar_ts)) :
-        return image_list[-1].split('.')[0]
+    image_dir = os.path.join(data_root, 'camera')
+    image_list = sorted(os.listdir(image_dir))
 
-    for i in range(0, len(image_list)-1):
-        curr_img_ts = image_list[i].split('.')[0]
-        post_img_ts = image_list[i+1].split('.')[0]
+    image_ts_list = [int(name.split('.')[0]) for name in image_list]
+    min_diff = float('inf')
+    closest_img = None
 
-        if (abs(int(curr_img_ts) - int(lidar_ts)) < abs(int(post_img_ts) - int(lidar_ts))):
-            return int(curr_img_ts)
+    for i, img_ts in enumerate(image_ts_list):
+        diff = abs(img_ts - int(lidar_ts))
+        if diff < min_diff:
+            min_diff = diff
+            closest_img = image_list[i]
 
+    if closest_img is None:
+        return None
+    return int(closest_img.split('.')[0])
 
 def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
     sep = os.path.sep
     print(f"Processing {data_type} data..")
     if 'avikus' in prefix:
-        ids_file = os.path.join(CUR, 'data', 'avikus', 'motorboat', '005', f'{data_type}.txt')
+        ids_file = os.path.join(CUR, *data_root.split('/'), f'{data_type}.txt')
     else:
         ids_file = os.path.join(CUR, 'pointpillars', 'dataset', 'ImageSets', f'{data_type}.txt')        
     
@@ -79,7 +82,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
             lidar_ts = id.split()[-1].split('.')[0]
             image_id = find_closest_img(data_root, lidar_ts)
             img_path = os.path.join(data_root, 'camera', f'{image_id}.jpg')
-            lidar_path = os.path.join(data_root, 'lidar', 'Data', f'{lidar_ts}.avikus.pcd')            
+            lidar_path = os.path.join(data_root, 'lidar', 'flippedData', f'{lidar_ts}.avikus.pcd')            
             calib_path = os.path.join(data_root, f'calib_{data_dir_idx}.txt')
         else:
             img_path = os.path.join(data_root, split, 'image_2', f'{id}.png')
@@ -105,9 +108,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
 
         lidar_points = read_points(lidar_path)
         if 'avikus' in prefix:
-            lidar_points[:, 1:3] *= -1  # avikus2lidar
             lidar_points[:, -1] /= 255.0
-            tr_velo_to_cam_4x4 = np.identity(4)
 
             calib_path_yaml = os.path.join(data_root, "lidar.yaml")
             with open(calib_path_yaml, 'rb') as f:
@@ -116,15 +117,10 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
             rvec = np.array([calib_yaml_dict['camera2lidar']['rvec_1'], calib_yaml_dict['camera2lidar']['rvec_2'], calib_yaml_dict['camera2lidar']['rvec_3']])
             tvec = np.array([calib_yaml_dict['camera2lidar']['tvec_1'], calib_yaml_dict['camera2lidar']['tvec_2'], calib_yaml_dict['camera2lidar']['tvec_3']])
 
-            R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-            lidar2avi = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])   # lidar2avikus
-            tr_velo_to_cam = R@lidar2avi                                # lidar2camera
-
-            tr_velo_to_cam_4x4 = np.identity(4)
-            tr_velo_to_cam_4x4[:3, :3] = tr_velo_to_cam
-            tr_velo_to_cam_4x4[:3, -1] = tvec
-
-            tr_velo_to_cam = tr_velo_to_cam_4x4
+            tr_velo_to_cam_3x3, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
+            tr_velo_to_cam = np.identity(4)
+            tr_velo_to_cam[:3, :3] = tr_velo_to_cam_3x3
+            tr_velo_to_cam[:3, -1] = tvec
         else:
             tr_velo_to_cam = calib_dict['Tr_velo_to_cam']
 
@@ -147,20 +143,12 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
         if label:            
             if 'avikus' in prefix:
                 label_path = os.path.join(data_root, 'annos_dir', f'{lidar_ts}.txt')
-                tr_velo_to_cam = tr_velo_to_cam_4x4
-
             else:
                 label_path = os.path.join(data_root, split, 'label_2', f'{id}.txt')
                 tr_velo_to_cam = calib_dict['Tr_velo_to_cam']
 
-            if '1736092774831' in label_path:
-                continue
-
             annotation_dict = read_label(label_path)
             annotation_dimensions = annotation_dict['dimensions']
-
-            if 'avikus' in prefix:
-                annotation_dimensions[1:] = annotation_dict['dimensions'][1:] * -1
 
             annotation_dict['difficulty'] = judge_difficulty(annotation_dict, prefix)
             annotation_dict['num_points_in_gt'] = get_points_num_in_bbox(

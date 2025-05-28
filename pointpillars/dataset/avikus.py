@@ -89,10 +89,7 @@ class Avikus(Dataset):
         rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
         tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
 
-        R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-        lidar2avi = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])   # lidar2avikus
-        tr_velo_to_cam = R@lidar2avi                                # lidar2camera
-
+        tr_velo_to_cam, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
         self.tr_velo_to_cam_4x4 = np.identity(4)
         self.tr_velo_to_cam_4x4[:3, :3] = tr_velo_to_cam
         self.tr_velo_to_cam_4x4[:3, -1] = tvec
@@ -126,7 +123,6 @@ class Avikus(Dataset):
         velodyne_path = data_info['velodyne_path'].replace('velodyne', self.pts_prefix)
         pts_path = os.path.join(self.data_root, velodyne_path)
         pts = read_points(pts_path)
-        pts[:, 1:3] *= -1
         pts[:, -1] = pts[:, -1] / 255.0
 
         # calib input: for bbox coordinates transformation between Camera and Lidar.
@@ -140,13 +136,7 @@ class Avikus(Dataset):
         annos_dimension = annos_info['dimensions'].reshape(1, -1)
         rotation_y = annos_info['rotation_y']
         gt_bboxes = np.concatenate([annos_location, annos_dimension, rotation_y[:, None]], axis=1).astype(np.float32)
-        tr_avikus_to_lidar_4x4 = np.identity(4)
-        tr_avikus_to_lidar_4x4[1,1] = -1
-        tr_avikus_to_lidar_4x4[2,2] = -1
-        if self.split == 'train':
-            gt_bboxes_3d = bbox_avikus2lidar(gt_bboxes, tr_avikus_to_lidar_4x4, self.r0_rect)
-        else:
-            gt_bboxes_3d = bbox_camera2lidar(gt_bboxes, self.tr_velo_to_cam_4x4, self.r0_rect)
+        gt_bboxes_3d = bbox_camera2lidar(gt_bboxes, self.tr_velo_to_cam_4x4, self.r0_rect)
         gt_labels = [self.CLASSES.get(name, -1) for name in annos_name]
         data_dict = {
             'pts': pts,

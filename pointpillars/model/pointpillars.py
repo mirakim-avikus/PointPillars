@@ -8,8 +8,6 @@ from pointpillars.model.anchors import Anchors, anchor_target, anchors2bboxes
 from pointpillars.ops import Voxelization, nms_cuda
 from pointpillars.utils import limit_period
 
-AVIKUS = True
-
 class PillarLayer(nn.Module):
     def __init__(self, voxel_size, point_cloud_range, max_num_points, max_voxels):
         super().__init__()
@@ -258,10 +256,10 @@ class PointPillars(nn.Module):
         
         # anchors
         if 'avikus' in prefix:
-            ranges = [[0, -100.0, -5.0, 250.0, 100.0, 5.0],
-                        [0, -100.0, -5.0, 250.0, 100.0, 5.0],
-                        [0, -100.0, -5.0, 250.0, 100.0, 5.0]]
-            sizes = [[6.40, 2.2, 2.6], [7.80, 2.3, 2.5], [8.5, 2.3, 2.9]]
+            ranges = [[0, -50., -10., 250., 50., 10.],
+                    [0, -50., -10., 250., 50., 10.],
+                    [0, -50., -10., 250., 50., 10.]]
+            sizes = [[3.0, 10.0, 3.0], [3.0, 10.0, 3.0], [3.0, 10.0, 3.0]]
         else:
             ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
                         [0, -39.68, -0.6, 69.12, 39.68, -0.6],
