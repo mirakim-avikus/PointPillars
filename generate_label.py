@@ -30,7 +30,9 @@ def extract_annos_for_frames(frame_ids, pkl_data):
     results = {}
     for frame_id in frame_ids:
         if frame_id in pkl_data:
-            results[frame_id] = pkl_data[frame_id].get('annos', {})
+            results[frame_id] = []
+            for data in pkl_data[frame_id]:
+                results[frame_id].append(data.get('annos', {}))
             print(f"Good: Frame ID {frame_id} found in PKL data.")
         else:
             print(f"Warning: Frame ID {frame_id} not found in PKL data.")
@@ -44,41 +46,23 @@ def save_annos_dict_as_txt(data_root, annos_dict, output_dir, pcd_filenames, Rt)
         file_path = os.path.join(data_root, output_dir, file_name)
 
         with open(file_path, 'w') as f:
-            if len(annos['name']) == 1:
-                name = annos['name'][0]
-                truncated = annos['truncated']
-                occluded = annos['occluded']
-                alpha = annos['alpha']
-                bbox = annos['bbox']
-                dimensions = annos['dimensions']
+            for i in range(len(annos)):
+                name = annos[i]['name'][0].item()
+                truncated = annos[i]['truncated']
+                occluded = annos[i]['occluded']
+                alpha = annos[i]['alpha']
+                bbox = annos[i]['bbox']
+                dimensions = annos[i]['dimensions']
                 hwl = [dimensions[1], dimensions[2], dimensions[0]]
-                location = Rt @ np.append(annos['location'], 1).T
-                rotation_rvec = np.array([annos['rotation_x'], annos['rotation_y'], annos['rotation_z']])
+                location = Rt@np.append(annos[i]['location'], 1).T
+                rotation_rvec = np.array([annos[i]['rotation_x'], annos[i]['rotation_y'], annos[i]['rotation_z']])
                 rotation_mat, _ = cv2.Rodrigues(rotation_rvec)
-                rotation_mat_4x4 = np.identity(4)
-                rotation_mat_4x4[:3, :3] = rotation_mat
-                rotation_mat_cam = Rt@rotation_mat_4x4
-                rotation_rvec_cam, _ = cv2.Rodrigues(rotation_mat_cam[:3, :3])
-                rotation_y = rotation_rvec_cam[1][0]    # rotation_y_cam
-            
-            else:
-                for i in range(len(annos['name'])):
-                    name = annos['name'][i]
-                    truncated = annos['truncated'][i]
-                    occluded = annos['occluded'][i]
-                    alpha = annos['alpha'][i]
-                    bbox = annos['bbox'][i]
-                    dimensions = annos['dimensions'][i]
-                    hwl = [dimensions[1], dimensions[2], dimensions[0]]
-                    location = Rt@np.append(annos['location'][i], 1).T
-                    rotation_rvec = np.array([annos['rotation_x'][i], annos['rotation_y'][i], annos['rotation_z'][i]])
-                    rotation_mat, _ = cv2.Rodrigues(rotation_rvec)
-                    rotation_mat_cam = Rt@rotation_mat
-                    rotation_rvec_cam, _ = cv2.Rodrigues(rotation_mat_cam)
-                    rotation_y = rotation_rvec_cam[1][0]
+                rotation_mat_cam = Rt[:3, :3]@rotation_mat
+                rotation_rvec_cam, _ = cv2.Rodrigues(rotation_mat_cam)
+                rotation_y = rotation_rvec_cam[1][0]
 
-            line =f"{name} {truncated:.2f} {occluded} {alpha:.2f} {bbox[0]:.2f} {bbox[1]:.2f} {bbox[2]:.2f} {bbox[3]:.2f} {hwl[0]:.2f} {hwl[1]:.2f} {hwl[2]:.2f} {location[0]:.2f} {location[1]:.2f} {location[2]:.2f} {rotation_y:.2f}\n"
-            f.write(line)
+                line =f"{name} {truncated:.2f} {occluded} {alpha:.2f} {bbox[0]:.2f} {bbox[1]:.2f} {bbox[2]:.2f} {bbox[3]:.2f} {hwl[0]:.2f} {hwl[1]:.2f} {hwl[2]:.2f} {location[0]:.2f} {location[1]:.2f} {location[2]:.2f} {rotation_y:.2f}\n"
+                f.write(line)
 
 
 # find closest image filename
@@ -206,10 +190,8 @@ def main(args):
     tree = ET.parse(xml_file_path)
     root = tree.getroot()
 
+    kitti_like_dict = {}
     # iterate every track item 
-    items = root.find('item')
-    if (items is not None):
-        pose_item = items.find()
     for idx, item in enumerate(root.findall(".//item")):
         try:
             object_type = item.findtext('objectType')
@@ -224,7 +206,7 @@ def main(args):
         pose_item = item.find('.//poses/item')
         if pose_item is None:
             continue
-
+        
         tx = float(pose_item.findtext('tx'))
         ty = float(pose_item.findtext('ty'))
         tz = float(pose_item.findtext('tz'))
@@ -284,12 +266,20 @@ def main(args):
         }
 
         # image와 기타 정보들 들어가있음
-        kitti_like_dict[first_frame] = {
-            'velodyne_path': velodyne_path,
-            'image': image,
-            'calib': calib,
-            'annos': annos, 
-        }
+        if first_frame in kitti_like_dict:
+            kitti_like_dict[first_frame].append({
+                'velodyne_path': velodyne_path,
+                'image': image,
+                'calib': calib,
+                'annos': annos, 
+            })
+        else:
+            kitti_like_dict[first_frame] = [{
+                'velodyne_path': velodyne_path,
+                'image': image,
+                'calib': calib,
+                'annos': annos, 
+            }]
 
     frame_ids, pcd_filenames = load_frame_ids(frame_list_path)
     annos_dict = extract_annos_for_frames(frame_ids, kitti_like_dict)

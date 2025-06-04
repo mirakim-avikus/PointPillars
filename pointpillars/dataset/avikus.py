@@ -132,8 +132,9 @@ class Avikus(Dataset):
         # annotations input
         # annos_info = self.remove_dont_care(annos_info)
         annos_name = annos_info['name']
-        annos_location = annos_info['location'].reshape(1, -1)
-        annos_dimension = annos_info['dimensions'].reshape(1, -1)
+        annos_location = annos_info['location']
+        annos_dimension = annos_info['dimensions']
+
         rotation_y = annos_info['rotation_y']
         gt_bboxes = np.concatenate([annos_location, annos_dimension, rotation_y[:, None]], axis=1).astype(np.float32)
         gt_bboxes_3d = bbox_camera2lidar(gt_bboxes, self.tr_velo_to_cam_4x4, self.r0_rect)
