@@ -145,7 +145,11 @@ def main(args):
             batch_size = len(batched_pts)
             batched_anchors = [anchors for _ in range(batch_size)]
             result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors)[0]
-            data_name = os.path.basename(data_dict['batched_img_info'][0]['image_path']).split('.')[0]
+            data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
+
+            if result_filter == None:
+                print(f'prediction is invalid in {data_name}.png')
+                continue
 
             if 'kitti' in prefix:
                 gt_path = os.path.join(args.data_root, 'training', 'label_2', f'{data_name}.txt')
@@ -154,7 +158,7 @@ def main(args):
                 calib_info = read_calib(calib_path)
                 tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
             else:
-                calib_info = read_calib(f"{os.path.normpath(args.data_root)}/calib_{os.path.basename(args.data_root)}.txt")
+                calib_info = read_calib(f"{os.path.normpath(args.data_root)}/calib_{os.path.basename(os.path.normpath(args.data_root))}.txt")
                 calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'),"lidar.yaml")
                 with open(calib_path_yaml, 'rb') as f:
                     calib = yaml.safe_load(f)
@@ -305,8 +309,11 @@ def main(args):
                 batch_size = len(batched_pts)
                 batched_anchors = [anchors for _ in range(batch_size)]
                 result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
+                data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
 
-                data_name = os.path.basename(data_dict['batched_img_info'][0]['image_path']).split('.')[0]
+                if result_filter == None:
+                    print(f'prediction is invalid in {data_name}.png')
+                    continue
 
                 if 'kitti' in prefix:
                     gt_path = os.path.join(args.data_root, 'training', 'label_2', f'{data_name}.txt')
@@ -319,7 +326,7 @@ def main(args):
                     lidar_dir = os.path.join(args.data_root, 'lidar', 'flippedData')
                     lidar_name = find_closest_lidar(lidar_dir, data_name)
                     gt_path = os.path.join(args.data_root,  'annos_dir', f'{lidar_name}.txt')
-                    calib_path = os.path.join(args.data_root, f'calib_{os.path.basename(args.data_root)}.txt')
+                    calib_path = os.path.join(args.data_root, f'calib_{os.path.basename(os.path.normpath(args.data_root))}.txt')
                     parent_path = os.path.dirname(os.path.normpath(args.data_root))
                     img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
 
