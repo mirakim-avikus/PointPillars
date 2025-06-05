@@ -40,7 +40,7 @@ def main(args):
     with open(os.path.join(root_path, "train.txt"), "w") as f:
         f.write("\n".join(train_lines))
 
-    print("Done: test.txt / val.txt / train.txt 생성 완료")
+    print("Done: test.txt / val.txt / train.txt")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Configuration Parameters')

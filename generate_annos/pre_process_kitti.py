@@ -10,7 +10,7 @@ import yaml
 from pathlib import Path
 
 CUR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(CUR)
+sys.path.append(os.path.abspath(os.path.join(CUR, '../')))
 
 from pointpillars.utils import read_points, write_points, read_calib, read_label, \
     write_pickle, remove_outside_points, get_points_num_in_bbox, \
@@ -61,9 +61,9 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
     sep = os.path.sep
     print(f"Processing {data_type} data..")
     if 'avikus' in prefix:
-        ids_file = os.path.join(CUR, *data_root.split('/'), f'{data_type}.txt')
+        ids_file = os.path.join(CUR, '..', *data_root.split('/'), f'{data_type}.txt')
     else:
-        ids_file = os.path.join(CUR, 'pointpillars', 'dataset', 'ImageSets', f'{data_type}.txt')        
+        ids_file = os.path.join(CUR, '..', 'pointpillars', 'dataset', 'ImageSets', f'{data_type}.txt')        
     
     with open(ids_file, 'r') as f:
         ids = [id.strip() for id in f.readlines()]

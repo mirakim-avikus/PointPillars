@@ -21,12 +21,20 @@
 # gt_path="data/avikus/motorboat/007/annos_dir/1736093515111.txt"
 # calib_path="data/avikus/motorboat/007/calib_007.txt"
 
+# # 2. avikus vessel - 3D points checked. 2D projection checked
+# image_path="data/avikus/motorboat/007/camera/1736093508474.jpg"
+# pcd_path="data/avikus/motorboat/007/lidar/flippedData/1736093508412.avikus.pcd"
+# pretrained_weight="pretrained/epoch_160.pth"
+# gt_path="data/avikus/motorboat/007/annos_dir/1736093508412.txt"
+# calib_path="data/avikus/motorboat/007/calib_007.txt"
+
 # 2. avikus vessel - 3D points checked. 2D projection checked
-image_path="data/avikus/motorboat/007/camera/1736093508474.jpg"
-pcd_path="data/avikus/motorboat/007/lidar/flippedData/1736093508412.avikus.pcd"
+image_path="data/avikus/motorboat/016/camera/1736093515274.jpg"
+pcd_path="data/avikus/motorboat/016/lidar/flippedData/1736093515312.avikus.pcd"
 pretrained_weight="pretrained/epoch_160.pth"
-gt_path="data/avikus/motorboat/007/annos_dir/1736093508412.txt"
-calib_path="data/avikus/motorboat/007/calib_007.txt"
+gt_path="data/avikus/motorboat/016/annos_dir/1736093515312.txt"
+calib_path="data/avikus/motorboat/016/calib_016.txt"
+
 
 python3 test.py --ckpt $pretrained_weight --pc_path $pcd_path --calib_path $calib_path  --gt_path $gt_path --img_path $image_path
 
