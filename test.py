@@ -13,6 +13,93 @@ from pointpillars.utils import setup_seed, read_points, read_calib, read_label, 
 from pointpillars.model import PointPillars
 
 
+def box3d_volume(box):
+    """Calculate volume of 3D box : (x1, y1, z1, x2, y2, z2)"""
+    x1, y1, z1, x2, y2, z2 = box
+    return max(0, x2-x1) * max(0, y2-y1) * max(0, z2-z1)
+
+def intersection_volume(boxA, boxB):
+    """Intersection volume of two 3D boxes"""
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    zA = max(boxA[2], boxB[2])
+    xB = min(boxA[3], boxB[3])
+    yB = min(boxA[4], boxB[4])
+    zB = min(boxA[5], boxB[5])
+    return box3d_volume((xA, yA, zA, xB, yB, zB))
+
+def iou3d(boxA, boxB):
+    """3D IoU"""
+    inter_vol = intersection_volume(boxA, boxB)
+    union_vol = box3d_volume(boxA) + box3d_volume(boxB) - inter_vol
+    return inter_vol / union_vol if union_vol != 0 else 0 
+
+def giou3d(boxA, boxB):
+    """Generalized IoU for 3D"""
+    iou_score = iou3d(boxA, boxB)
+
+    xC1 = min(boxA[0], boxB[0])
+    yC1 = min(boxA[1], boxB[1])
+    zC1 = min(boxA[2], boxB[2])
+    xC2 = max(boxA[3], boxB[3])
+    yC2 = max(boxA[4], boxB[4])
+    zC2 = max(boxA[5], boxB[5])
+
+    enclosing_vol = box3d_volume((xC1, yC1, zC1, xC2, yC2, zC2))
+    union_vol = box3d_volume(boxA) + box3d_volume(boxB) - intersection_volume(boxA, boxB)
+    return iou_score - (enclosing_vol - union_vol) / enclosing_vol if enclosing_vol != 0 else iou_score #TODO 이거 맞는건가..?0
+
+def diou3d(boxA, boxB):
+    """Distance IoU for 3D"""
+    iou_score = iou3d(boxA, boxB)
+
+    # Center of each box 
+    centerA = ((boxA[0] + boxA[3]) / 2, (boxA[1] + boxA[4]) / 2, (boxA[2] + boxA[5]) / 2)
+    centerB = ((boxB[0] + boxB[3]) / 2, (boxB[1] + boxB[4]) / 2, (boxB[2] + boxB[5]) / 2)
+
+    center_dist_sq = sum([(a - b) ** 2 for a, b in zip(centerA, centerB)])
+
+    xC1 = min(boxA[0], boxB[0])
+    yC1 = min(boxA[1], boxB[1])
+    zC1 = min(boxA[2], boxB[2])
+    xC2 = max(boxA[3], boxB[3])
+    yC2 = max(boxA[4], boxB[4])
+    zC2 = max(boxA[5], boxB[5])
+
+    diag_sq = (xC2 - xC1) ** 2 + (yC2 - yC1) ** 2 + (zC2 - zC1) ** 2
+    return iou_score - (center_dist_sq / diag_sq) if diag_sq != 0 else iou_score
+
+def ciou3d(boxA, boxB):
+    """Complete IoU for 3D (simplified : only aspect ratio + DIoU)"""
+    iou_score = iou3d(boxA, boxB)
+    diou_score = diou3d(boxA, boxB)
+
+    # sizes
+    wA = boxA[3] - boxA[0]
+    hA = boxA[4] - boxA[1]
+    dA = boxA[5] - boxA[2]
+    wB = boxB[3] - boxB[0]
+    hB = boxB[4] - boxB[1]
+    dB = boxB[5] - boxB[2]
+
+    # simplified 3D aspect ratio penalty 
+    v = ((wA - wB) ** 2 + (hA - hB) ** 2 + (dA - dB) ** 2) / (wA ** 2 + hA ** 2+ dA ** 2 + 1e-6)
+    alpha = v / (1 - iou_score + v) if iou_score < 1 else 0
+
+    return diou_score - alpha * v 
+
+def containment_score3d(pred_box, gt_box):
+    """How much gt_box is contained in pred_box"""
+    xA = max(pred_box[0], gt_box[0])
+    yA = max(pred_box[1], gt_box[1])
+    zA = max(pred_box[2], gt_box[2])
+    xB = min(pred_box[0], gt_box[0])
+    yB = min(pred_box[1], gt_box[1])
+    zB = min(pred_box[2], gt_box[2])
+    inter_vol = box3d_volume(xA, yA, zA, xB, yB, zB)
+    gt_vol = box3d_volume(gt_box)
+    return inter_vol / gt_vol if gt_vol != 0 else 0
+
 def point_range_filter(pts, point_range=[0, -39.68, -3, 69.12, 39.68, 1]):
     '''
     data_dict: dict(pts, gt_bboxes_3d, gt_labels, gt_names, difficulty)
