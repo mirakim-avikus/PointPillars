@@ -251,7 +251,8 @@ class PointPillarsCore(nn.Module):
     def __init__(self,
                  nclasses=3, 
                  voxel_size=[0.16, 0.16, 4],
-                 point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]):
+                 point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1],
+                 prefix='kitti'):
         super().__init__()
         self.nclasses = nclasses
         self.pillar_encoder = PillarEncoder(voxel_size=voxel_size, 
@@ -267,10 +268,17 @@ class PointPillarsCore(nn.Module):
         self.head = Head(in_channel=384, n_anchors=2*nclasses, n_classes=nclasses)
         
         # anchors
-        ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                    [0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                    [0, -39.68, -1.78, 69.12, 39.68, -1.78]]
-        sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+        if 'avikus' in prefix:
+            ranges = [[0, -50., -10., 250., 50., 10.],
+                    [0, -50., -10., 250., 50., 10.],
+                    [0, -50., -10., 250., 50., 10.]]
+            sizes = [[3.0, 10.0, 3.0], [3.0, 10.0, 3.0], [3.0, 10.0, 3.0]]
+        else:
+            ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
+                        [0, -39.68, -0.6, 69.12, 39.68, -0.6],
+                        [0, -39.68, -1.78, 69.12, 39.68, -1.78]]
+            sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+
         rotations=[0, 1.57]
         self.anchors_generator = Anchors(ranges=ranges, 
                                          sizes=sizes, 

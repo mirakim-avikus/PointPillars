@@ -41,10 +41,21 @@ def main(args):
     CLASSES = {
         'Pedestrian': 0, 
         'Cyclist': 1, 
-        'Car': 2
+        'motorboat': 2
         }
+
+    prefix = args.prefix
+
+    if 'avikus' in prefix:
+        point_cloud_range=[0, -50., -10., 250., 50., 10.]
+        pcd_limit_range = np.array([0.0, -50.0, -10.0, 200.0, 50.0, 10.0], dtype=np.float32)
+        voxel_size=[0.16, 0.16, 4]
+    else:
+        point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]
+        pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
+        voxel_size=[0.16, 0.16, 4]
+
     LABEL2CLASSES = {v:k for k, v in CLASSES.items()}
-    pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
 
     ## 1.1 onnx check and onnx load
     try:
@@ -66,16 +77,18 @@ def main(args):
     output_name = sess.get_inputs()[0].name
 
     if not args.no_cuda:
-        model_pre = PointPillarsPre().cuda()
+        model_pre = PointPillarsPre(voxel_size=voxel_size, point_cloud_range=point_cloud_range).cuda()
         model_post = PointPillarsPos(nclasses=len(CLASSES)).cuda()
     else:
-        model_pre = PointPillarsPre()
+        model_pre = PointPillarsPre(voxel_size=voxel_size, point_cloud_range=point_cloud_range)
         model_post = PointPillarsPos(nclasses=len(CLASSES))
     
     if not os.path.exists(args.pc_path):
         raise FileNotFoundError 
     pc = read_points(args.pc_path)
-    pc = point_range_filter(pc)
+    pc = point_range_filter(pc, pcd_limit_range)
+    if 'avikus' in prefix:
+        pc[:, -1] /= 255.0
     pc_torch = torch.from_numpy(pc)
 
     model_pre.eval()
@@ -144,6 +157,7 @@ if __name__ == '__main__':
                         help='your saved onnx path')
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
+    parser.add_argument('--prefix', default='avikus')
     args = parser.parse_args()
 
     main(args)

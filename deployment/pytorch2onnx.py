@@ -15,14 +15,28 @@ def main(args):
     CLASSES = {
         'Pedestrian': 0, 
         'Cyclist': 1, 
-        'Car': 2
+        'motorboat': 2
         }
 
+    prefix = args.prefix
+    if prefix == 'avikus':
+        point_cloud_range=[0, -50., -10., 250., 50., 10.]
+    else:
+        point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]
+    voxel_size=[0.16, 0.16, 4]
+
     if not args.no_cuda:
-        model = PointPillarsCore(nclasses=len(CLASSES)).cuda()
+        if prefix == 'avikus':
+            model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=voxel_size, point_cloud_range=point_cloud_range, prefix='avikus').cuda()
+        else:
+            model = PointPillarsCore(nclasses=len(CLASSES)).cuda()
+        
         model.load_state_dict(torch.load(args.ckpt))
     else:
-        model = PointPillarsCore(nclasses=len(CLASSES))
+        if prefix == 'avikus':
+            model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=voxel_size, point_cloud_range=point_cloud_range, prefix='avikus')
+        else:
+            model = PointPillarsCore(nclasses=len(CLASSES))
         model.load_state_dict(
             torch.load(args.ckpt, map_location=torch.device('cpu')))
     model.eval()
@@ -55,6 +69,8 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt', default='../pretrained/epoch_160.pth', help='your checkpoint for kitti')
     parser.add_argument('--saved_onnx_path', default='../pretrained/model.onnx',
                         help='your saved onnx path')
+    parser.add_argument('--prefix', required=True,
+                        help='choose either avikus or kitti')
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
     args = parser.parse_args()
