@@ -4,6 +4,7 @@ import numpy as np
 import random
 import torch
 import pdb
+import cv2
 from ops.iou3d_module import boxes_overlap_bev, boxes_iou_bev
 
 
@@ -547,7 +548,7 @@ def iou_bev(bboxes1, bboxes2):
     return bev_overlap
 
 
-def keep_bbox_from_image_range(result, tr_velo_to_cam, r0_rect, P2, image_shape):
+def keep_bbox_from_image_range(result, tr_velo_to_cam, r0_rect, P2, image_shape, prefix, K=None, D=None):
     '''
     result: dict(lidar_bboxes, labels, scores)
     tr_velo_to_cam: shape=(4, 4)
@@ -563,8 +564,12 @@ def keep_bbox_from_image_range(result, tr_velo_to_cam, r0_rect, P2, image_shape)
     scores = result['scores']
     camera_bboxes = bbox_lidar2camera(lidar_bboxes, tr_velo_to_cam, r0_rect) # (n, 7)
     bboxes_points = bbox3d2corners_camera(camera_bboxes) # (n, 8, 3)
-    image_points = points_camera2image(bboxes_points, P2) # (n, 8, 2)
-    image_x1y1 = np.min(image_points, axis=1) # (n, 2)
+    if 'avikus' in prefix:
+        points_normalized = bboxes_points[:, :, :2] / bboxes_points[:, :, 2:]
+        points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D) # (n*8, 1, 2)
+        image_points = points_distorted.reshape(bboxes_points.shape[0], -1, 2)
+    else:
+        image_points = points_camera2image(bboxes_points, P2) # (n, 8, 2)    image_x1y1 = np.min(image_points, axis=1) # (n, 2)    image_x1y1 = np.min(image_points, axis=1) # (n, 2)
     image_x1y1 = np.maximum(image_x1y1, 0)
     image_x2y2 = np.max(image_points, axis=1) # (n, 2)
     image_x2y2 = np.minimum(image_x2y2, [w, h])
