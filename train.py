@@ -173,8 +173,7 @@ def main(args):
                 tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
                 R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
                 tr_velo_to_cam = np.identity(4)
-                lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-                tr_velo_to_cam[:3, :3] = R@lidar2avikus
+                tr_velo_to_cam[:3, :3] = R
                 tr_velo_to_cam[:3, -1] = tvec
                 parent_path = os.path.dirname(os.path.normpath(args.data_root))
                 img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])

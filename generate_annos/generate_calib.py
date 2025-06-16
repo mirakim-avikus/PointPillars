@@ -67,9 +67,8 @@ def main(args):
 
     R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
     tr_velo_to_cam = np.identity(4)
-    # lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-    # tr_velo_to_cam[:3, :3] = R@lidar2avikus
-    tr_velo_to_cam[:3, :3] = R
+    lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+    tr_velo_to_cam[:3, :3] = R@lidar2avikus
     tr_velo_to_cam[:3, -1] = tvec
 
     calib = {
