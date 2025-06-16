@@ -6,7 +6,7 @@ import torch
 
 
 CUR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(CUR))
+sys.path.append(os.path.join('..', os.path.dirname(CUR)))
 
 from model import PointPillarsCore
 
