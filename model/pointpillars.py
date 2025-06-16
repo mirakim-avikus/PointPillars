@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import pdb
 import torch
 import torch.nn as nn
@@ -51,9 +52,8 @@ class PillarEncoder(nn.Module):
         self.vx, self.vy = voxel_size[0], voxel_size[1]
         self.x_offset = voxel_size[0] / 2 + point_cloud_range[0]
         self.y_offset = voxel_size[1] / 2 + point_cloud_range[1]
-        self.x_l = int((point_cloud_range[3] - point_cloud_range[0]) / voxel_size[0])
-        self.y_l = int((point_cloud_range[4] - point_cloud_range[1]) / voxel_size[1])
-
+        self.x_l = math.ceil((point_cloud_range[3] - point_cloud_range[0]) / voxel_size[0])
+        self.y_l = math.ceil((point_cloud_range[4] - point_cloud_range[1]) / voxel_size[1])
         self.conv = nn.Conv1d(in_channel, out_channel, 1, bias=False)
         self.bn = nn.BatchNorm1d(out_channel, eps=1e-3, momentum=0.01)
 
@@ -177,9 +177,18 @@ class Neck(nn.Module):
         return: (bs, 384, 248, 216)
         '''
         outs = []
+        target_h = max([feat.shape[2] for feat in x]) 
+        target_w = max([feat.shape[3] for feat in x])
         for i in range(len(self.decoder_blocks)):
-            xi = self.decoder_blocks[i](x[i]) # (bs, 128, 248, 216)
-            outs.append(xi)
+            xi = self.decoder_blocks[i](x[i]) 
+            h, w = xi.shape[2], xi.shape[3]
+
+            pad_h = target_h - h
+            pad_w = target_w - w
+            padding = (0, pad_w, 0, pad_h)
+
+            xi_padded = F.pad(xi, padding, mode='constant', value=0)
+            outs.append(xi_padded)
         out = torch.cat(outs, dim=1)
         return out
 
