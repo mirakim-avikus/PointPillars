@@ -117,9 +117,10 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
             rvec = np.array([calib_yaml_dict['camera2lidar']['rvec_1'], calib_yaml_dict['camera2lidar']['rvec_2'], calib_yaml_dict['camera2lidar']['rvec_3']])
             tvec = np.array([calib_yaml_dict['camera2lidar']['tvec_1'], calib_yaml_dict['camera2lidar']['tvec_2'], calib_yaml_dict['camera2lidar']['tvec_3']])
 
-            tr_velo_to_cam_3x3, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
+            R, _ = cv2.Rodrigues(rvec)
             tr_velo_to_cam = np.identity(4)
-            tr_velo_to_cam[:3, :3] = tr_velo_to_cam_3x3
+            lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+            tr_velo_to_cam[:3, :3] = R@lidar2avikus
             tr_velo_to_cam[:3, -1] = tvec
         else:
             tr_velo_to_cam = calib_dict['Tr_velo_to_cam']

@@ -91,6 +91,7 @@ class Avikus(Dataset):
 
         tr_velo_to_cam, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
         self.tr_velo_to_cam_4x4 = np.identity(4)
+        lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
         self.tr_velo_to_cam_4x4[:3, :3] = tr_velo_to_cam
         self.tr_velo_to_cam_4x4[:3, -1] = tvec
 

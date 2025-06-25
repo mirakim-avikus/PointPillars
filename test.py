@@ -138,9 +138,10 @@ def main(args):
     rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
     tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
 
-    tr_velo_to_cam, _ = cv2.Rodrigues(rvec)
+    R, _ = cv2.Rodrigues(rvec)
+    lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
     tr_velo_to_cam_4x4 = np.identity(4)
-    tr_velo_to_cam_4x4[:3, :3] = tr_velo_to_cam
+    tr_velo_to_cam_4x4[:3, :3] = R@lidar2avikus
     tr_velo_to_cam_4x4[:3, -1] = tvec
 
     point_cloud_range=[0, -50., -10., 250., 50., 10.]

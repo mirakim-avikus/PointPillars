@@ -182,7 +182,11 @@ def main(args):
     ref2lidar_Rt_inv = np.hstack((ref2lidar_R_inv, ref2lidar_t_inv))
 
     R, _ = cv2.Rodrigues(rvec)
-    Rt = np.hstack((R, tvec.reshape(3, 1)))
+    tr_velo_to_cam = np.identity(4)
+    lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+    tr_velo_to_cam[:3, :3] = R@lidar2avikus
+    tr_velo_to_cam[:3, -1] = tvec
+    Rt = tr_velo_to_cam[:3, :]
 
     kitti_like_dict = {}
 
