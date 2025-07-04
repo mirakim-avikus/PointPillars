@@ -21,7 +21,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> PillarLayer::forward(con
     }
 
     torch::Tensor pillars = torch::cat(pillars_list, 0);
-    torch::Tensor npoints_per_pillar = torch::cat(pillars_list, 0);
+    torch::Tensor npoints_per_pillar = torch::cat(npoints_list, 0);
 
     std::vector<torch::Tensor> coors_batch;
     for (size_t i = 0; i < coors_list.size(); i++)

@@ -26,16 +26,30 @@ set(Torch_DIR "/workspace/libtorch")
 find_package(Torch REQUIRED)
 
 # 3. execution file 
-find_package(pybind11 REQUIRED)
-add_executable(onnx_infer src/onnx_inference.cpp)
-add_executable(preprocess src/main.cpp src/pillar_layer.cpp src/voxelization.cpp 
-                            ops/voxelization/voxelization_cpu.cpp ops/voxelization/voxelization_cuda.cu)
+add_executable(preprocess src/main.cpp 
+                            src/pillar_layer.cpp 
+                            src/voxelization.cpp 
+                            ops/voxelization/voxelization_cpu.cpp 
+                            ops/voxelization/voxelization_cuda.cu)
+
+# 6. Onnx 
+include_directories(${ONNX_ROOT}/include)
+link_directories(${ONNX_ROOT}/lib)
+message(STATUS "ONNX_ROOT : ${ONNX_ROOT}")
 
 # 4. library link
+find_package(pybind11 REQUIRED)
 find_package(Threads REQUIRED)
 find_package(CUDAToolkit REQUIRED)
-target_link_libraries(preprocess PRIVATE "${TORCH_LIBRARIES}" ${PCL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} 
-                                            Python3::Python pybind11::module CUDA::cudart)
+target_link_libraries(preprocess 
+            PRIVATE 
+                "${TORCH_LIBRARIES}" 
+                ${PCL_LIBRARIES} 
+                ${CMAKE_THREAD_LIBS_INIT} 
+                Python3::Python 
+                pybind11::module 
+                CUDA::cudart 
+                "${ONNX_ROOT}/lib/libonnxruntime.so")
 
 pybind11_add_module(voxelization ops/voxelization/voxelization.cpp)
 target_link_libraries(voxelization PRIVATE "${TORCH_LIBRARIES}")
@@ -43,11 +57,6 @@ target_link_libraries(voxelization PRIVATE "${TORCH_LIBRARIES}")
 
 # 5. LibTorch definition 
 target_compile_options(preprocess PRIVATE "-D_GLIBCXX_USE_CXX11_ABI=1")
-
-# 6. Onnx 
-include_directories(${ONNX_ROOT}/include)
-link_directories(${ONNX_ROOT}/lib)
-target_link_libraries(onnx_infer PRIVATE "${ONNX_ROOT}/lib/libonnxruntime.so")
 
 # 7. Python
 find_package(Python3 REQUIRED COMPONENTS Development)
@@ -59,19 +68,12 @@ find_package(Threads REQUIRED)
 # [Optional] Compiler AVX 
 set_property(TARGET preprocess PROPERTY CXX_STANDARD 17)
 
-
-# 런타임 시 shared library 경로 설정
-set_target_properties(onnx_infer PROPERTIES
+set_target_properties(preprocess PROPERTIES
+    CUDA_ARCHITECTURES 75
     BUILD_RPATH ${ONNX_ROOT}/lib
     INSTALL_RPATH ${ONNX_ROOT}/lib
 )
 
-# 런타임 시 shared library 경로 설정
-set_target_properties(preprocess PROPERTIES
-    CUDA_ARCHITECTURES 75
-)
-
-# CUDA 경로 명시 
 set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda-11.4)
 find_package(CUDA REQUIRED)
 
