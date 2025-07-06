@@ -1,81 +1,92 @@
 cmake_minimum_required(VERSION 3.10)
-project(onnx_infer)
+project(onnx_infer LANGUAGES C CXX CUDA)
 
+# -------------------- [Global Settings] --------------------
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_ARCHITECTURES "75") # or 86 (Ampere용), depending on what's supported
-set(CMAKE_PREFIX_PATH /workspace/libtorch "${CMAKE_PREFIX_PATH};/usr/local/cuda")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-set(ONNX_ROOT /workspace/onnxruntime-linux-x64-gpu-1.12.1)
 
+# CUDA Architecture: Ampere (e.g. RTX 30xx series)
+set(CMAKE_CUDA_ARCHITECTURES 86)
+set(TORCH_CUDA_ARCH_LIST "8.6")
+
+# CUDA flags (for debugging)
 unset(CMAKE_CUDA_FLAGS)
-set(CMAKE_CUDA_FLAGS "-gencode arch=compute_75,code=sm_75")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode arch=compute_86,code=sm_86 -g -G")
 
-include_directories(${PROJECT_SOURCE_DIR}/include)
-include_directories(${PROJECT_SOURCE_DIR}/ops/voxelization)
-include_directories(${TORCH_INCLUDE_DIRS})
+# -------------------- [Path Setup] --------------------
+set(CMAKE_PREFIX_PATH 
+        /workspace/libtorch 
+        ${CMAKE_PREFIX_PATH}
+        /usr/local/cuda
+)
 
-# 1. PCL 
+set(ONNX_ROOT /workspace/onnxruntime-linux-x64-gpu-1.12.1)
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+# -------------------- [Subdirectories] --------------------
+add_subdirectory(ops/iou3d)
+
+# -------------------- [Include Directories] --------------------
+include_directories(
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/ops/voxelization
+    ${PROJECT_SOURCE_DIR}/ops/iou3d
+    ${ONNX_ROOT}/include
+)
+
+# -------------------- [PCL Setup] --------------------
 find_package(PCL REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
-# 2. LibTorch 
+# -------------------- [Torch Setup] --------------------
 set(Torch_DIR "/workspace/libtorch")
 find_package(Torch REQUIRED)
+include_directories(${TORCH_INCLUDE_DIRS})
 
-# 3. execution file 
-add_executable(preprocess src/main.cpp 
-                            src/pillar_layer.cpp 
-                            src/voxelization.cpp 
-                            ops/voxelization/voxelization_cpu.cpp 
-                            ops/voxelization/voxelization_cuda.cu)
-
-# 6. Onnx 
-include_directories(${ONNX_ROOT}/include)
+# -------------------- [ONNX Runtime] --------------------
 link_directories(${ONNX_ROOT}/lib)
-message(STATUS "ONNX_ROOT : ${ONNX_ROOT}")
 
-# 4. library link
-find_package(pybind11 REQUIRED)
-find_package(Threads REQUIRED)
+# -------------------- [Other Dependencies] --------------------
+find_package(CUDA REQUIRED)
 find_package(CUDAToolkit REQUIRED)
-target_link_libraries(preprocess 
-            PRIVATE 
-                "${TORCH_LIBRARIES}" 
-                ${PCL_LIBRARIES} 
-                ${CMAKE_THREAD_LIBS_INIT} 
-                Python3::Python 
-                pybind11::module 
-                CUDA::cudart 
-                "${ONNX_ROOT}/lib/libonnxruntime.so")
-
-pybind11_add_module(voxelization ops/voxelization/voxelization.cpp)
-target_link_libraries(voxelization PRIVATE "${TORCH_LIBRARIES}")
-
-
-# 5. LibTorch definition 
-target_compile_options(preprocess PRIVATE "-D_GLIBCXX_USE_CXX11_ABI=1")
-
-# 7. Python
+find_package(Threads REQUIRED)
+find_package(pybind11 REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Development)
 include_directories(${Python3_INCLUDE_DIRS})
 
-# 8. Threads 
-find_package(Threads REQUIRED)
+# -------------------- [Main Executable] --------------------
+add_executable(preprocess 
+                    src/main.cpp 
+                    src/pillar_layer.cpp 
+                    src/voxelization.cpp 
+                    ops/voxelization/voxelization_cpu.cpp 
+                    ops/voxelization/voxelization_cuda.cu
+)
 
-# [Optional] Compiler AVX 
-set_property(TARGET preprocess PROPERTY CXX_STANDARD 17)
+target_link_libraries(preprocess PRIVATE
+                                ${TORCH_LIBRARIES}
+                                ${PCL_LIBRARIES} 
+                                ${CMAKE_THREAD_LIBS_INIT} 
+                                Python3::Python 
+                                pybind11::module 
+                                CUDA::cudart
+                                iou3d_lib
+                                "${ONNX_ROOT}/lib/libonnxruntime.so"
+)
 
+target_compile_definitions(preprocess PRIVATE "-D_GLIBCXX_USE_CXX11_ABI=1")
+
+# Optional: AVX / CUDA arch tuning 
+set_target_properties(preprocess PROPERTIES CUDA_ARCHITECTURES 86)
+
+# Optional: RPATH for ONNX shared lib
 set_target_properties(preprocess PROPERTIES
-    CUDA_ARCHITECTURES 75
     BUILD_RPATH ${ONNX_ROOT}/lib
     INSTALL_RPATH ${ONNX_ROOT}/lib
 )
 
-set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda-11.4)
-find_package(CUDA REQUIRED)
-
-# [Optional] Compiler AVX 
-set_property(TARGET preprocess PROPERTY CXX_STANDARD 17)
+# -------------------- [Python Bindings: voxelization module] --------------------
+pybind11_add_module(voxelization ops/voxelization/voxelization.cpp)
+target_link_libraries(voxelization PRIVATE "${TORCH_LIBRARIES}")

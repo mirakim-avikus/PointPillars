@@ -41,12 +41,26 @@ cd PointPillars/deployment
 python pytorch2onnx.py --ckpt ../pretrained/epoch_160.pth
 ```
 
-#### 1.2 (Optional) ONNX inference
+#### 1.2.1 (Optional) ONNX inference (python)
 
 ```
 cd PointPillars/deployment
 python onnx_infer.py --pc_path ../dataset/demo_data/val/000134.bin --onnx_path ../pretrained/model.onnx
 ```
+
+#### 1.2.2 (Optional) ONNX inference (cpp)
+
+```
+cd PointPillars
+
+# install onnxruntime and libtorch
+chmod +x settings.sh && sh ./setting.sh
+
+# build and run
+mkdir build && cd build && cmake .. && make
+./preprocess ../pretrained/model.onnx
+```
+
 
 #### 1.3 (Optional) Comaprison to Pytorch inference
 

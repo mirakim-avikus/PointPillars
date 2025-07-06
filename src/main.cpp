@@ -9,6 +9,7 @@
 #include <numeric>
 #include <torch/torch.h>
 #include "pillar_layer.h"
+#include "iou3d.h"
 #include <assert.h>
 #include <onnxruntime_cxx_api.h>
 
@@ -17,7 +18,7 @@ constexpr int MAX_POINTS_PER_PILLAR = 32;
 constexpr int PILLAR_FEATURE_DIM = 4;
 constexpr int COORS_DIM = 4;
 
-// int nms_gpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh, int device_id);
+int nms_gpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh, int device_id);
 
 torch::Tensor OrtValueToTensor(Ort::Value& ort_value) {
     assert (ort_value.IsTensor());
@@ -57,18 +58,16 @@ class PointPillarPost {
         : nclasses_(nclasses), nms_thrs_(nms_thrs), score_thrs_(score_thrs), max_num_(max_num) {}
 
     std::optional<std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>> forward(const torch::Tensor&result) {
-        torch::Tensor bbox_pred = result.index({torch::indexing::Slice(), torch::indexing::Slice({0, 7})});
-        torch::Tensor cls_pred = result.index({torch::indexing::Slice(), torch::indexing::Slice({7, 10})});
-        torch::Tensor dir_cls_pred = result.index({torch::indexing::Slice(), 10});
-        // auto nms_result = nms_filter(bbox_pred, cls_pred, dir_cls_pred);
-        // if (nms_result.has_value()) {
-        //     return nms_result;
-        // } else {
-        //     std::cout << "No results for nms_filter" << std::endl;
-        //     return std::nullopt;
-        // }
-        std::cout <<"not implemented yet" << std::endl;
-        return std::nullopt;
+        torch::Tensor bbox_pred = result.index({torch::indexing::Slice(), torch::indexing::Slice({0, 7})}).cuda();
+        torch::Tensor cls_pred = result.index({torch::indexing::Slice(), torch::indexing::Slice({7, 10})}).cuda();
+        torch::Tensor dir_cls_pred = result.index({torch::indexing::Slice(), 10}).cuda();
+        auto nms_result = nms_filter(bbox_pred, cls_pred, dir_cls_pred);
+        if (nms_result.has_value()) {
+            return nms_result;
+        } else {
+            std::cout << "No results for nms_filter" << std::endl;
+            return std::nullopt;
+        }
     }
 
     private:
@@ -77,7 +76,7 @@ class PointPillarPost {
     float score_thrs_;
     int max_num_;
 
-    std::optional<torch::Tensor> nms_cuda(const torch::Tensor& boxes, const torch::Tensor& scores, float thresh,
+    torch::Tensor nms_cuda(const torch::Tensor& boxes, const torch::Tensor& scores, float thresh,
                             c10::optional<int> pre_maxsize = c10::nullopt,
                             c10::optional<int> post_maxsize = c10::nullopt) {
         auto order_with_values = scores.sort(/*dim=*/0, /*descending=*/true);
@@ -88,18 +87,17 @@ class PointPillarPost {
         }
 
         torch::Tensor boxes_ordered = boxes.index_select(0, order).contiguous();
-        auto keep = torch::empty({boxes_ordered.size(0)}, torch::dtype(torch::kLong).device(boxes.device()));
-        std::cout << "nms gpu not implemented yet" << std::endl;
-        return std::nullopt;
-        // int kept = nms_gpu(boxes_ordered, keep, thresh, boxes.device().index());
-        // std::cout << "finish nms gpu!" << std::endl;
-        // keep = keep.narrow(0, 0, kept);
-        // torch::Tensor keep_original = order.index_select(0, keep).contiguous();
+        auto keep = torch::empty({boxes_ordered.size(0)}, torch::dtype(torch::kLong));
+        
+        std::cout << "thresh : " << thresh << std::endl;
+        int kept = nms_gpu(boxes_ordered, keep, thresh, boxes.device().index());
+        keep = keep.narrow(0, 0, kept).to(order.device());
+        torch::Tensor keep_original = order.index_select(0, keep).contiguous();
 
-        // if (post_maxsize.has_value()) {
-        //     keep_original = keep_original.index({torch::indexing::Slice(0, post_maxsize.value())});
-        // }
-        // return keep_original;
+        if (post_maxsize.has_value()) {
+            keep_original = keep_original.index({torch::indexing::Slice(0, (post_maxsize.value()))});
+        }
+        return keep_original;
     }
 
     std::optional<std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>> nms_filter(const torch::Tensor& bbox_pred, const torch::Tensor& bbox_cls_pred, const torch::Tensor& bbox_dir_cls_pred) {
@@ -110,50 +108,49 @@ class PointPillarPost {
         torch::Tensor bbox_min = bbox_pred2d_xy - bbox_pred2d_lw / 2;
         torch::Tensor bbox_max = bbox_pred2d_xy + bbox_pred2d_lw / 2;
         torch::Tensor bbox_pred2d = torch::cat({bbox_min, bbox_max, bbox_rot}, /*dim=*/-1);
-        std::vector<torch::Tensor> ret_bboxes, ret_labels, ret_scores;
-        
-        // for (int cls = 0; cls < nclasses_; cls++)
-        // {
-        //     torch::Tensor cur_bbox_cls_pred = bbox_cls_pred.index({torch::indexing::Slice(), cls});
-        //     torch::Tensor score_inds = cur_bbox_cls_pred > nms_thrs_;
-        //     if (score_inds.sum().item<int>() == 0) continue;
+    
+        std::vector<torch::Tensor> ret_bboxes, ret_labels, ret_scores;    
+        for (int cls = 0; cls < nclasses_; cls++)
+        {
+            torch::Tensor cur_bbox_cls_pred = bbox_cls_pred.index({torch::indexing::Slice(), cls});
+            torch::Tensor score_inds = cur_bbox_cls_pred > score_thrs_;
+            if (score_inds.sum().item<int>() == 0) continue;
             
-        //     torch::Tensor inds = score_inds.nonzero().squeeze(1);
-        //     cur_bbox_cls_pred = cur_bbox_cls_pred.index_select(0, inds).to(torch::kCUDA);
-        //     torch::Tensor cur_bbox_pred2d = bbox_pred2d.index_select(0, inds).to(torch::kCUDA);
-        //     torch::Tensor cur_bbox_pred = bbox_pred.index_select(0, inds);
-        //     torch::Tensor cur_bbox_dir_cls_pred = bbox_dir_cls_pred.index_select(0, inds);
+            torch::Tensor inds = score_inds.nonzero().squeeze(1);
+            cur_bbox_cls_pred = cur_bbox_cls_pred.index_select(0, inds);
+            torch::Tensor cur_bbox_pred2d = bbox_pred2d.index_select(0, inds);
+            torch::Tensor cur_bbox_pred = bbox_pred.index_select(0, inds);
+            torch::Tensor cur_bbox_dir_cls_pred = bbox_dir_cls_pred.index_select(0, inds);
 
-        //     torch::Tensor keep_inds = nms_cuda(cur_bbox_pred2d, cur_bbox_cls_pred, nms_thrs_);
+            std::cout << "nms_thrs_ : " << nms_thrs_ << std::endl;
+            torch::Tensor keep_inds = nms_cuda(cur_bbox_pred2d, cur_bbox_cls_pred, nms_thrs_);
 
-        //     cur_bbox_cls_pred = cur_bbox_cls_pred.index_select(0, keep_inds);
-        //     cur_bbox_pred = cur_bbox_pred.index_select(0, keep_inds);
-        //     cur_bbox_dir_cls_pred = cur_bbox_dir_cls_pred.index_select(0, keep_inds);
+            cur_bbox_cls_pred = cur_bbox_cls_pred.index_select(0, keep_inds);
+            cur_bbox_pred = cur_bbox_pred.index_select(0, keep_inds);
+            cur_bbox_dir_cls_pred = cur_bbox_dir_cls_pred.index_select(0, keep_inds);
 
-        //     torch::Tensor rot = limit_period(cur_bbox_pred.index({torch::indexing::Slice(), -1}).detach().cpu(), 1, M_PI);
-        //     rot += (1 - cur_bbox_dir_cls_pred).to(torch::kFloat32) * M_PI;
-        //     cur_bbox_pred.index_put_({torch::indexing::Slice(), -1}, rot.to(cur_bbox_pred.device()));
+            torch::Tensor rot = limit_period(cur_bbox_pred.index({torch::indexing::Slice(), -1}).detach().cpu(), 1, M_PI);
+            rot += (1 - cur_bbox_dir_cls_pred).to(torch::kFloat32).to(rot.device()) * M_PI;
+            cur_bbox_pred.index_put_({torch::indexing::Slice(), -1}, rot.to(cur_bbox_pred.device()));
 
-        //     ret_bboxes.push_back(cur_bbox_pred);
-        //     ret_labels.push_back(torch::full({cur_bbox_pred.size(0)}, cls, torch::dtype(torch::kLong).device(cur_bbox_pred.device())));
-        //     ret_scores.push_back(cur_bbox_cls_pred);
-        // }
+            ret_bboxes.push_back(cur_bbox_pred);
+            ret_labels.push_back(torch::full({cur_bbox_pred.size(0)}, cls, torch::dtype(torch::kLong).device(cur_bbox_pred.device())));
+            ret_scores.push_back(cur_bbox_cls_pred);
+        }
         
-        // if (ret_bboxes.empty()) return std::nullopt;
+        if (ret_bboxes.empty()) return std::nullopt;
 
-        // auto bboxes = torch::cat(ret_bboxes, 0);
-        // auto labels = torch::cat(ret_labels, 0);
-        // auto scores = torch::cat(ret_scores, 0);
+        auto bboxes = torch::cat(ret_bboxes, 0);
+        auto labels = torch::cat(ret_labels, 0);
+        auto scores = torch::cat(ret_scores, 0);
 
-        // if (bboxes.size(0) > max_num_) {
-        //     auto topk = std::get<1>(scores.topk(max_num_));
-        //     bboxes = bboxes.index_select(0, topk);
-        //     labels = labels.index_select(0, topk);
-        //     scores = scores.index_select(0, topk);
-        // }
-        // return std::make_tuple(bboxes, labels, scores);
-        std::cout << "not implemented yet" << std::endl;
-        return std::nullopt;
+        if (bboxes.size(0) > max_num_) {
+            auto topk = std::get<1>(scores.topk(max_num_));
+            bboxes = bboxes.index_select(0, topk);
+            labels = labels.index_select(0, topk);
+            scores = scores.index_select(0, topk);
+        }
+        return std::make_tuple(bboxes, labels, scores);
     }
 
     torch::Tensor limit_period(const torch::Tensor& val, float offset, float period) {
@@ -298,11 +295,14 @@ int main(int argc, char** argv)
     float score_thres = 0.1;
     float nms_thres = 0.01;
     int max_num = 50;
-    PointPillarPost postprocess(nclass, score_thres, nms_thres, max_num);
+    PointPillarPost postprocess(nclass, nms_thres, score_thres, max_num);
     auto result = postprocess.forward(output_tensors);
     if (result.has_value()) {
         auto [bboxes, labels, scores] = *result;
         std::cout << "Postprocessed : " << bboxes.size(0) << " bboxes" << std::endl;
+        std::cout << "bboxes : " << bboxes << std::endl;
+        std::cout << "labels : " << labels << std::endl;
+        std::cout << "scores : " << scores << std::endl;
     } else {
         std::cout << "PostProcess has been failed!" << std::endl;
     }

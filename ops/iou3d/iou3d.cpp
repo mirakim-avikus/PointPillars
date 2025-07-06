@@ -7,13 +7,9 @@ Written by Shaoshuai Shi
 All Rights Reserved 2019-2020.
 */
 
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-#include <torch/extension.h>
-#include <torch/serialize/tensor.h>
-
 #include <cstdint>
 #include <vector>
+#include "iou3d.h"
 
 #define CHECK_CUDA(x) \
   TORCH_CHECK(x.device().is_cuda(), #x, " must be a CUDAtensor ")
@@ -113,6 +109,12 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep,
                          boxes_num * col_blocks * sizeof(unsigned long long)));
   nmsLauncher(boxes_data, mask_data, boxes_num, nms_overlap_thresh);
 
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+      printf("CUDA kernel launch error: %s\n", cudaGetErrorString(err));
+  }
+  cudaDeviceSynchronize();
+
   // unsigned long long mask_cpu[boxes_num * col_blocks];
   // unsigned long long *mask_cpu = new unsigned long long [boxes_num *
   // col_blocks];
@@ -201,10 +203,10 @@ int nms_normal_gpu(at::Tensor boxes, at::Tensor keep,
   return num_to_keep;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("boxes_overlap_bev_gpu", &boxes_overlap_bev_gpu,
-        "oriented boxes overlap");
-  m.def("boxes_iou_bev_gpu", &boxes_iou_bev_gpu, "oriented boxes iou");
-  m.def("nms_gpu", &nms_gpu, "oriented nms gpu");
-  m.def("nms_normal_gpu", &nms_normal_gpu, "nms gpu");
-}
+// PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+//   m.def("boxes_overlap_bev_gpu", &boxes_overlap_bev_gpu,
+//         "oriented boxes overlap");
+//   m.def("boxes_iou_bev_gpu", &boxes_iou_bev_gpu, "oriented boxes iou");
+//   m.def("nms_gpu", &nms_gpu, "oriented nms gpu");
+//   m.def("nms_normal_gpu", &nms_normal_gpu, "nms gpu");
+// }
