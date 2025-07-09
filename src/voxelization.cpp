@@ -59,7 +59,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> voxelization_forward(
             voxel_num = voxelization::nondisterministic_hard_voxelize_gpu(points, voxels, coors, num_points_per_voxel, voxel_size, coors_range, max_points, max_voxels, 3);
         }
     } else {
-        std::cout << "preprocess : CPU - hard voxelization!" << std::endl;
         voxel_num = voxelization::hard_voxelize_cpu(points, voxels, coors, num_points_per_voxel, voxel_size, coors_range, max_points, max_voxels, 3);
     }
 

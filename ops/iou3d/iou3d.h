@@ -8,6 +8,8 @@
 
 int nms_gpu(at::Tensor boxes, at::Tensor keep,
 	    float nms_overlap_thresh, int device_id);
+int nms_cpu(at::Tensor boxes, at::Tensor keep,
+	    float nms_overlap_thresh, int device_id);
 int nms_normal_gpu(at::Tensor boxes, at::Tensor keep,
                    float nms_overlap_thresh, int device_id);
 int boxes_iou_bev_gpu(at::Tensor boxes_a, at::Tensor boxes_b,

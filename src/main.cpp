@@ -27,6 +27,7 @@ bool PREPOST_PROCESS_DETERMINISTIC = false;
 bool CORE_PROCESS_GPU = true;
 
 int nms_gpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh, int device_id);
+int nms_cpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh, int device_id);
 
 torch::Tensor OrtValueToTensor(Ort::Value& ort_value) {
     assert (ort_value.IsTensor());
@@ -86,7 +87,7 @@ class PointPillarPost {
     float score_thrs_;
     int max_num_;
 
-    torch::Tensor nms_cuda(const torch::Tensor& boxes, const torch::Tensor& scores, float thresh,
+    torch::Tensor nms(const torch::Tensor& boxes, const torch::Tensor& scores, float thresh,
                             c10::optional<int> pre_maxsize = c10::nullopt,
                             c10::optional<int> post_maxsize = c10::nullopt) {
         auto order_with_values = scores.sort(/*dim=*/0, /*descending=*/true);
@@ -99,7 +100,23 @@ class PointPillarPost {
         torch::Tensor boxes_ordered = boxes.index_select(0, order).contiguous();
         auto keep = torch::empty({boxes_ordered.size(0)}, torch::dtype(torch::kLong));
         
-        int kept = nms_gpu(boxes_ordered, keep, thresh, boxes.device().index());
+        int kept;
+        if (PREPOST_PROCESS_GPU) {
+            if (boxes_ordered.device().is_cpu()) {
+                std::cout << "NMS convert tensors from CPU to GPU" << std::endl;
+                boxes_ordered = boxes_ordered.cuda();
+                keep = keep.cuda();
+            }
+            kept = nms_gpu(boxes_ordered, keep, thresh, boxes.device().index());
+        } else {
+            if (boxes_ordered.device().is_cuda()) {
+                std::cout << "NMS convert tensors from GPU to CPU" << std::endl;
+                boxes_ordered = boxes_ordered.cpu();
+                keep = keep.cpu();
+            }
+            kept = nms_cpu(boxes_ordered, keep, thresh, boxes.device().index());
+        }
+        std::cout << "nms process finished! data device : " << boxes_ordered.device() << std::endl;
         keep = keep.narrow(0, 0, kept).to(order.device());
         torch::Tensor keep_original = order.index_select(0, keep).contiguous();
 
@@ -131,7 +148,7 @@ class PointPillarPost {
             torch::Tensor cur_bbox_pred = bbox_pred.index_select(0, inds);
             torch::Tensor cur_bbox_dir_cls_pred = bbox_dir_cls_pred.index_select(0, inds);
 
-            torch::Tensor keep_inds = nms_cuda(cur_bbox_pred2d, cur_bbox_cls_pred, nms_thrs_);
+            torch::Tensor keep_inds = nms(cur_bbox_pred2d, cur_bbox_cls_pred, nms_thrs_);
 
             cur_bbox_cls_pred = cur_bbox_cls_pred.index_select(0, keep_inds);
             cur_bbox_pred = cur_bbox_pred.index_select(0, keep_inds);
@@ -171,8 +188,12 @@ class PointPillarPost {
     
 std::vector<Ort::Value> run_onnx_inference(torch::Tensor& pillars, torch::Tensor& coors, torch::Tensor& npoints, const std::string& model_path, Ort::Session& session, Ort::AllocatorWithDefaultOptions& allocator, Ort::MemoryInfo& memory_info, std::vector<const char*>& input_names, std::vector<const char*>& output_names, Ort::RunOptions& run_options) {
     // onnx setting 
-    if (!CORE_PROCESS_GPU)
-    {
+    if (CORE_PROCESS_GPU && pillars.is_cpu())
+    {   
+        pillars = pillars.cuda();
+        coors = coors.cuda();
+        npoints = npoints.cuda();
+    } else if (!CORE_PROCESS_GPU && pillars.is_cuda()) {
         pillars = pillars.cpu();
         coors = coors.cpu();
         npoints = npoints.cpu();
@@ -383,8 +404,6 @@ int main(int argc, char** argv)
         Ort::RunOptions run_options;
         run_options.SetRunLogSeverityLevel(0);
 
-        std::cout << "memory info : " << memory_info << std::endl;
-        std::cout << "onnx tensor : " << pillars.device() << std::endl;
         std::vector<Ort::Value> inference_results = run_onnx_inference(pillars, coors, npoints, model_path, session, allocator, memory_info, input_names, output_names, run_options);
         end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> onnx_elapsed = end - start;
