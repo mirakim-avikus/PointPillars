@@ -52,7 +52,6 @@ link_directories(${ONNX_ROOT}/lib)
 find_package(CUDA REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(Threads REQUIRED)
-find_package(pybind11 REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Development)
 include_directories(${Python3_INCLUDE_DIRS})
 
@@ -70,7 +69,6 @@ target_link_libraries(preprocess PRIVATE
                                 ${PCL_LIBRARIES} 
                                 ${CMAKE_THREAD_LIBS_INIT} 
                                 Python3::Python 
-                                pybind11::module 
                                 CUDA::cudart
                                 iou3d_lib
                                 "${ONNX_ROOT}/lib/libonnxruntime.so"
@@ -87,6 +85,3 @@ set_target_properties(preprocess PROPERTIES
     INSTALL_RPATH ${ONNX_ROOT}/lib
 )
 
-# -------------------- [Python Bindings: voxelization module] --------------------
-pybind11_add_module(voxelization ops/voxelization/voxelization.cpp)
-target_link_libraries(voxelization PRIVATE "${TORCH_LIBRARIES}")

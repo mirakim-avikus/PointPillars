@@ -3,6 +3,27 @@
 #include <torch/torch.h>
 #include <torch/extension.h>
 
+int voxelization::hard_voxelize_cpu(const at::Tensor &points, at::Tensor &voxels,
+                      at::Tensor &coors, at::Tensor &num_points_per_voxel,
+                      const std::vector<float> voxel_size,
+                      const std::vector<float> coors_range,
+                      const int max_points, const int max_voxels,
+                      const int NDim);
+
+int voxelization::hard_voxelize_gpu(const at::Tensor &points, at::Tensor &voxels,
+                      at::Tensor &coors, at::Tensor &num_points_per_voxel,
+                      const std::vector<float> voxel_size,
+                      const std::vector<float> coors_range,
+                      const int max_points, const int max_voxels,
+                      const int NDim);
+
+int voxelization::nondisterministic_hard_voxelize_gpu(const at::Tensor &points, at::Tensor &voxels,
+                                        at::Tensor &coors, at::Tensor &num_points_per_voxel,
+                                        const std::vector<float> voxel_size,
+                                        const std::vector<float> coors_range,
+                                        const int max_points, const int max_voxels,
+                                        const int NDim);
+
 Voxelization::Voxelization(std::vector<float> voxel_size,
                             std::vector<float> point_cloud_range,
                             int max_num_points,
