@@ -1,7 +1,6 @@
 #pragma once 
 
 #include <torch/torch.h>
-#include "voxelization_pre.h"
 
 class PillarLayer {
     public:
@@ -15,5 +14,5 @@ class PillarLayer {
         std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(const std::vector<torch::Tensor>& batched_pts);
 
     private:
-        Voxelization voxel_layer;
+        std::unique_ptr<Voxelization> voxel_layer;
 };

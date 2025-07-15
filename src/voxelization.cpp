@@ -60,7 +60,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> voxelization_forward(
 ) 
 {
     int ndim = points.size(1);
-    
     auto options = points.options();
     auto int_options = options.dtype(torch::kInt32);
 

@@ -9,18 +9,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_ARCHITECTURES 86)
 set(TORCH_CUDA_ARCH_LIST "8.6")
 
+# Set paths
+set(THIRDPARTY_DIR ${CMAKE_SOURCE_DIR}/thirdparty)
+set(ONNX_ROOT ${CMAKE_SOURCE_DIR}/thirdparty/onnxruntime-linux-x64-gpu-1.12.1)
+set(LIBTORCH_ROOT ${THIRDPARTY_DIR}/libtorch)
+
+set(CMAKE_PREFIX_PATH 
+        ${LIBTORCH_ROOT}
+        ${CMAKE_PREFIX_PATH}
+        /usr/local/cuda
+)
+
 # CUDA flags (for debugging)
 unset(CMAKE_CUDA_FLAGS)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode arch=compute_86,code=sm_86 -g -G")
 
 # -------------------- [Path Setup] --------------------
-set(CMAKE_PREFIX_PATH 
-        /workspace/libtorch 
-        ${CMAKE_PREFIX_PATH}
-        /usr/local/cuda
-)
 
-set(ONNX_ROOT /workspace/onnxruntime-linux-x64-gpu-1.12.1)
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 # -------------------- [Subdirectories] --------------------
@@ -58,8 +63,10 @@ include_directories(${Python3_INCLUDE_DIRS})
 # -------------------- [Main Executable] --------------------
 add_executable(preprocess 
                     src/main.cpp 
-                    src/pillar_layer.cpp 
-                    src/voxelization.cpp 
+                    src/pointpillars_core.cpp 
+                    src/pointpillars_pipeline.cpp 
+                    src/pointpillars_post.cpp 
+                    src/pointpillars_pre.cpp 
                     ops/voxelization/voxelization_cpu.cpp 
                     ops/voxelization/voxelization_cuda.cu
 )

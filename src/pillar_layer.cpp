@@ -1,14 +1,15 @@
 #include "pillar_layer.h"
+#include "voxelization_pre.h"
 #include <torch/nn/functional/padding.h>
 
 PillarLayer::PillarLayer(std::vector<float> voxel_size,
                                 std::vector<float> point_cloud_range,
                                 int max_num_points,
                                 std::pair<int, int> max_voxels,
-                                bool training,
+                                bool use_gpu,
                                 bool deterministic,
-                                bool use_gpu)
-    : voxel_layer(voxel_size, point_cloud_range, max_num_points, max_voxels, training, deterministic, use_gpu) {
+                                bool training)
+    : PREPOST_PROCESS_GPU(use_gpu), voxel_layer(voxel_size, point_cloud_range, max_num_points, max_voxels, training, deterministic, PREPOST_PROCESS_GPU) {
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> PillarLayer::forward(const std::vector<torch::Tensor>& batched_pts) {
