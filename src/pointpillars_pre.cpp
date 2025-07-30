@@ -2,6 +2,8 @@
 #include "voxelization.h"
 #include <torch/nn/functional/padding.h>
 
+extern bool SAVE_TENSOR;
+
 int voxelization::hard_voxelize_cpu(const at::Tensor &points, at::Tensor &voxels,
                       at::Tensor &coors, at::Tensor &num_points_per_voxel,
                       const std::vector<float> voxel_size,
@@ -22,6 +24,52 @@ int voxelization::nondisterministic_hard_voxelize_gpu(const at::Tensor &points, 
                                         const std::vector<float> coors_range,
                                         const int max_points, const int max_voxels,
                                         const int NDim);
+
+void saveTensorToBin(const torch::Tensor& tensor, const std::string& filename) {
+    torch::Tensor contiguous = tensor.contiguous();
+    torch::ScalarType dtype = contiguous.scalar_type();  // ✅ FIXED
+
+    std::ofstream out(filename, std::ios::binary);
+    if (!out) {
+        std::cerr << "파일 열기 실패: " << filename << "\n";
+        return;
+    }
+
+    size_t num_elements = contiguous.numel();
+
+    if (dtype == torch::kFloat32) {
+        float* data_ptr = contiguous.data_ptr<float>();
+        out.write(reinterpret_cast<char*>(data_ptr), num_elements * sizeof(float));
+    } else if (dtype == torch::kInt32) {
+        int32_t* data_ptr = contiguous.data_ptr<int32_t>();
+        out.write(reinterpret_cast<char*>(data_ptr), num_elements * sizeof(int32_t));
+    } else if (dtype == torch::kInt64) {
+        int64_t* data_ptr = contiguous.data_ptr<int64_t>();
+        out.write(reinterpret_cast<char*>(data_ptr), num_elements * sizeof(int64_t));
+    } else {
+        std::cerr << "지원되지 않는 dtype입니다: " << dtype << "\n";
+    }
+
+    out.close();
+}
+
+template <typename T>
+std::vector<T> loadTensorFromBin(const std::string& filename, const std::vector<int64_t>& shape, torch::Dtype dtype) {
+    size_t num_elements = 1;
+    for (auto s : shape) num_elements *= s;
+
+    std::ifstream in(filename, std::ios::binary);
+    if (!in) {
+        std::cerr << "파일 열기 실패: " << filename << "\n";
+        return {};
+    }
+
+    std::vector<T> buffer(num_elements);
+    in.read(reinterpret_cast<char*>(buffer.data()), num_elements * sizeof(T));
+    in.close();
+
+    return buffer;
+}
 
 PointPillarsPre::PointPillarsPre(const std::vector<float>& voxel_size,
                                         const std::vector<float>& point_cloud_range,
@@ -97,6 +145,20 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> PointPillarsPre::forward
     }
 
     torch::Tensor coors_batch_tensor = torch::cat(coors_batch, 0);
+
+    if (SAVE_TENSOR) {
+        saveTensorToBin(pillars, "pillars.bin");
+        saveTensorToBin(coors_batch_tensor, "coors.bin");
+        saveTensorToBin(npoints_per_pillar, "npoints.bin");
+
+        std::vector<int64_t> pillars_shape(pillars.sizes().begin(), pillars.sizes().end());
+        std::vector<int64_t> coors_shape(coors_batch_tensor.sizes().begin(), coors_batch_tensor.sizes().end());
+        std::vector<int64_t> npoints_shape(npoints_per_pillar.sizes().begin(), npoints_per_pillar.sizes().end());
+
+        std::vector<float> t1 = loadTensorFromBin<float>("pillars.bin", pillars_shape, torch::kFloat32);
+        std::vector<int64_t> t2 = loadTensorFromBin<int64_t>("coors.bin", coors_shape, torch::kInt64);
+        std::vector<int32_t> t3 = loadTensorFromBin<int32_t>("npoints.bin", npoints_shape, torch::kInt32);
+    }
 
     return std::make_tuple(pillars, coors_batch_tensor, npoints_per_pillar);
 }

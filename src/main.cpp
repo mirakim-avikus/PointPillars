@@ -24,6 +24,7 @@ constexpr int COORS_DIM = 4;
 bool PREPOST_PROCESS_GPU = false;
 bool PREPOST_PROCESS_DETERMINISTIC = false;
 bool CORE_PROCESS_GPU = false;
+bool SAVE_TENSOR=false;
 
 torch::Tensor OrtValueToTensor(Ort::Value& ort_value) {
     assert (ort_value.IsTensor());
@@ -226,6 +227,13 @@ int main(int argc, char** argv)
             std::cout << "bboxes : " << bboxes << std::endl;
             std::cout << "labels : " << labels << std::endl;
             std::cout << "scores : " << scores << std::endl;
+
+            if (SAVE_TENSOR) {
+                saveTensorToBin(bboxes, "bboxes.bin");
+                std::vector<int64_t> bbox_shape(bboxes.sizes().begin(), bboxes.sizes().end());
+                auto t1 = loadTensorFromBin<float>("bboxes.bin", bbox_shape, torch::kFloat32);
+                std::cout << "bboxes loaded: " << t1 << std::endl;
+            }
         } else {
             std::cout << "PostProcess has been failed!" << std::endl;
             num_failed++;

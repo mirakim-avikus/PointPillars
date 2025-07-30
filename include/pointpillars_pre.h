@@ -4,6 +4,10 @@
 #include <tuple>
 #include <vector>
 
+void saveTensorToBin(const torch::Tensor& tensor, const std::string& filename);
+template <typename T>
+std::vector<T> loadTensorFromBin(const std::string& filename, const std::vector<int64_t>& shape, torch::Dtype dtype);
+
 class PointPillarsPre {
     public:
         PointPillarsPre(const std::vector<float>& voxel_size,
