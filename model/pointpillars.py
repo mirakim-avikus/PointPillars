@@ -37,12 +37,8 @@ class PillarLayer(nn.Module):
         
         pillars = torch.cat(pillars, dim=0) # (p1 + p2 + ... + pb, num_points, c)
         npoints_per_pillar = torch.cat(npoints_per_pillar, dim=0) # (p1 + p2 + ... + pb, )
-        coors_batch = []
-        for i, cur_coors in enumerate(coors):
-            coors_batch.append(F.pad(cur_coors, (1, 0), value=i))
-        coors_batch = torch.cat(coors_batch, dim=0) # (p1 + p2 + ... + pb, 1 + 3)
-
-        return pillars, coors_batch, npoints_per_pillar
+        coors = torch.cat(coors, dim=0)
+        return pillars, coors, npoints_per_pillar
 
 
 class PillarEncoder(nn.Module):
@@ -60,7 +56,7 @@ class PillarEncoder(nn.Module):
     def forward(self, pillars, coors_batch, npoints_per_pillar):
         '''
         pillars: (p1 + p2 + ... + pb, num_points, c), c = 4
-        coors_batch: (p1 + p2 + ... + pb, 1 + 3)
+        coors_batch: (p1 + p2 + ... + pb, 3)
         npoints_per_pillar: (p1 + p2 + ... + pb, )
         return:  (bs, out_channel, y_l, x_l)
         '''
@@ -69,8 +65,8 @@ class PillarEncoder(nn.Module):
         offset_pt_center = pillars[:, :, :3] - torch.sum(pillars[:, :, :3], dim=1, keepdim=True) / npoints_per_pillar[:, None, None] # (p1 + p2 + ... + pb, num_points, 3)
 
         # 2. calculate offset to the pillar center
-        x_offset_pi_center = pillars[:, :, :1] - (coors_batch[:, None, 1:2] * self.vx + self.x_offset) # (p1 + p2 + ... + pb, num_points, 1)
-        y_offset_pi_center = pillars[:, :, 1:2] - (coors_batch[:, None, 2:3] * self.vy + self.y_offset) # (p1 + p2 + ... + pb, num_points, 1)
+        x_offset_pi_center = pillars[:, :, :1] - (coors_batch[:, None, 0:1] * self.vx + self.x_offset) # (p1 + p2 + ... + pb, num_points, 1)
+        y_offset_pi_center = pillars[:, :, 1:2] - (coors_batch[:, None, 1:2] * self.vy + self.y_offset) # (p1 + p2 + ... + pb, num_points, 1)
 
         # 3. encoder
         features = torch.cat([pillars, offset_pt_center, x_offset_pi_center, y_offset_pi_center], dim=-1) # (p1 + p2 + ... + pb, num_points, 9)
@@ -94,17 +90,15 @@ class PillarEncoder(nn.Module):
 
         # 6. pillar scatter
         batched_canvas = []
-        bs = coors_batch[-1, 0] + 1
         # Note: only batch_size=1 is supported for TensorRT 
-        for i in range(bs):
-            cur_coors = coors_batch
-            cur_features = pooling_features
-            canvas = torch.zeros((self.x_l * self.y_l, self.out_channel), dtype=torch.float32, device=device)
-            cur_coors_flat = cur_coors[:, 2] * self.x_l + cur_coors[:, 1]  ## why select here.
-            canvas[cur_coors_flat] = cur_features
-            canvas = canvas.view(self.y_l, self.x_l, self.out_channel)
-            canvas = canvas.permute(2, 0, 1).contiguous()
-            batched_canvas.append(canvas)
+        cur_coors = coors_batch
+        cur_features = pooling_features
+        canvas = torch.zeros((self.x_l * self.y_l, self.out_channel), dtype=torch.float32, device=device)
+        cur_coors_flat = cur_coors[:, 1] * self.x_l + cur_coors[:, 0]  ## why select here.
+        canvas[cur_coors_flat] = cur_features
+        canvas = canvas.view(self.y_l, self.x_l, self.out_channel)
+        canvas = canvas.permute(2, 0, 1).contiguous()
+        batched_canvas.append(canvas)
         batched_canvas = torch.stack(batched_canvas, dim=0) # (bs, in_channel, self.y_l, self.x_l)
         return batched_canvas
 
