@@ -134,17 +134,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> PointPillarsPre::forward
 
     torch::Tensor pillars = torch::cat(pillars_list, 0);
     torch::Tensor npoints_per_pillar = torch::cat(npoints_list, 0);
-
-    std::vector<torch::Tensor> coors_batch;
-    for (size_t i = 0; i < coors_list.size(); i++)
-    {
-        // Pad with batch idx : shape becomes (N, 1+3)
-        auto batch_idx = torch::full({coors_list[i].size(0), 1}, static_cast<int64_t>(i), torch::dtype(torch::kLong).device(coors_list[i].device()));
-        auto padded = torch::cat({batch_idx, coors_list[i]}, 1);
-        coors_batch.push_back(padded);
-    }
-
-    torch::Tensor coors_batch_tensor = torch::cat(coors_batch, 0);
+    torch::Tensor coors_batch_tensor = torch::cat(coors_list, 0);
 
     if (SAVE_TENSOR) {
         saveTensorToBin(pillars, "pillars.bin");
