@@ -145,13 +145,12 @@ def read_label(file_path):
     annotation = {}
     annotation['name'] = np.array([line[0] for line in lines])
     annotation['truncated'] = np.array([line[1] for line in lines], dtype=np.float32)
-    annotation['occluded'] = np.array([line[2] for line in lines], dtype=np.int32)
+    annotation['occluded'] = np.array([float(line[2]) for line in lines], dtype=np.float32)
     annotation['alpha'] = np.array([line[3] for line in lines], dtype=np.float32)
     annotation['bbox'] = np.array([line[4:8] for line in lines], dtype=np.float32)
-    annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32)[:, [2, 0, 1]] # hwl -> camera coordinates (lhw)
+    annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32) # hwl -> camera coordinates (lhw)
     annotation['location'] = np.array([line[11:14] for line in lines], dtype=np.float32)
-    annotation['rotation_y'] = np.array([line[14] for line in lines], dtype=np.float32)
-    
+    annotation['rotation_y'] = -1 * np.array([line[14] for line in lines], dtype=np.float32)
     return annotation
 
 

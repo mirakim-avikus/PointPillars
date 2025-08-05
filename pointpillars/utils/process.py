@@ -647,8 +647,7 @@ def points_in_bboxes_v2(points, r0_rect, tr_velo_to_cam, dimensions, location, r
     n_valid_bbox = len([item for item in name if item != 'DontCare'])
     location, dimensions = location[:n_valid_bbox], dimensions[:n_valid_bbox]
     rotation_y, name = rotation_y[:n_valid_bbox], name[:n_valid_bbox]
-    bboxes_camera = np.concatenate([location, dimensions, rotation_y[:, None]], axis=1)
-    bboxes_lidar = bbox_camera2lidar(bboxes_camera, tr_velo_to_cam, r0_rect)
+    bboxes_lidar = np.concatenate([location, dimensions, rotation_y[:, None]], axis=1)
     bboxes_corners = bbox3d2corners(bboxes_lidar)
     group_rectangle_vertexs_v = group_rectangle_vertexs(bboxes_corners)
     frustum_surfaces = group_plane_equation(group_rectangle_vertexs_v)
