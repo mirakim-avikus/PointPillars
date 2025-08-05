@@ -164,6 +164,8 @@ def main(args):
             r0_rect = calib_info['R0_rect'].astype(np.float32)
             P2 = calib_info['P2'].astype(np.float32)
 
+            parent_path = os.path.dirname(os.path.normpath(args.data_root))
+            img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
             img = cv2.imread(img_path)
             image_shape = img.shape[:2]
 
