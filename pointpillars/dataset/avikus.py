@@ -37,7 +37,12 @@ class BaseSampler():
 class Avikus(Dataset):
 
     CLASSES = {
-        'motorboat': 2
+        # 'human': 0,
+        # 'jetski': 1,
+        'smallboat': 2,
+        'mediumboat': 3,
+        'c-marker': 4,
+        'yacht': 5
         }
 
     def __init__(self, data_root, split, pts_prefix='velodyne_reduced'):
@@ -56,7 +61,7 @@ class Avikus(Dataset):
         self.data_aug_config=dict(
             db_sampler=dict(
                 db_sampler=db_sampler,
-                sample_groups=dict(motorboat=15)
+                sample_groups=dict(smallboat=2, mediumboat=2, **{"c-marker": 2}, yacht=2)
                 ),
             object_noise=dict(
                 num_try=100,
@@ -107,8 +112,7 @@ class Avikus(Dataset):
         for k, v in db_infos.items():
             db_infos[k] = [item for item in v if item['difficulty'] != -1]
 
-        # 2. filter_by_min_points, dict(Car=5, Pedestrian=10, Cyclist=10)
-        filter_thrs = dict(motorboat=5)
+        filter_thrs = dict(smallboat=10, mediumboat=15, **{"c-marker": 10}, yacht=10)
         for cat in self.CLASSES:
             filter_thr = filter_thrs[cat]
             db_infos[cat] = [item for item in db_infos[cat] if item['num_points_in_gt']>= filter_thr]

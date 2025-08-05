@@ -255,16 +255,16 @@ class PointPillars(nn.Module):
         self.head = Head(in_channel=384, n_anchors=2*nclasses, n_classes=nclasses)
         
         # anchors
-        if 'avikus' in prefix:
-            ranges = [[0, -50., -10., 250., 50., 10.],
-                    [0, -50., -10., 250., 50., 10.],
-                    [0, -50., -10., 250., 50., 10.]]
-            sizes = [[3.0, 10.0, 3.0], [3.0, 10.0, 3.0], [3.0, 10.0, 3.0]]
-        else:
-            ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                        [0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                        [0, -39.68, -1.78, 69.12, 39.68, -1.78]]
-            sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+        ranges = [point_cloud_range,
+                point_cloud_range,
+                point_cloud_range, 
+                point_cloud_range,
+                point_cloud_range,
+                point_cloud_range]
+        # sizes = [[0.7, 0.6, 1.2], [1.6, 5.0, 2.0], [3.0, 10.0, 3.0], 
+        #          [10.0, 45.0, 10.0], [2.2, 2.5, 4.5], [4.5, 12.0, 14.0]]
+        sizes = [[0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], 
+                 [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]]
 
         rotations=[0, 1.57]
         self.anchors_generator = Anchors(ranges=ranges, 
@@ -275,6 +275,9 @@ class PointPillars(nn.Module):
         self.assigners = [
             {'pos_iou_thr': 0.5, 'neg_iou_thr': 0.35, 'min_iou_thr': 0.35},
             {'pos_iou_thr': 0.5, 'neg_iou_thr': 0.35, 'min_iou_thr': 0.35},
+            {'pos_iou_thr': 0.6, 'neg_iou_thr': 0.45, 'min_iou_thr': 0.45},
+            {'pos_iou_thr': 0.6, 'neg_iou_thr': 0.45, 'min_iou_thr': 0.45},
+            {'pos_iou_thr': 0.6, 'neg_iou_thr': 0.45, 'min_iou_thr': 0.45},
             {'pos_iou_thr': 0.6, 'neg_iou_thr': 0.45, 'min_iou_thr': 0.45},
         ]
 

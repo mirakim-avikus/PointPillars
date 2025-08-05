@@ -14,7 +14,12 @@ from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
 
 CLASSES = {
-    'motorboat': 2
+    # 'human': 0,
+    # 'jetski': 1,
+    'smallboat': 2,
+    'mediumboat': 3,
+    'c-marker': 4,
+    'yacht': 5
     }
 
 def find_closest_lidar(lidar_dir, data_name):
@@ -69,7 +74,11 @@ def main(args):
     loss_func = Loss()
 
     # load pretrained weight 
-    pointpillars.load_state_dict(torch.load("pretrained/epoch_160.pth"))
+    checkpoint = torch.load("pretrained/epoch_160.pth")
+    model_dict = pointpillars.state_dict()
+    pretrained_dict = {k: v for k, v in checkpoint.items() if k in model_dict and v.size() == model_dict[k].size()}
+    model_dict.update(pretrained_dict)
+    pointpillars.load_state_dict(model_dict)
 
     max_iters = len(train_dataloader) * args.max_epoch
     init_lr = args.init_lr
@@ -366,12 +375,12 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Configuration Parameters')
-    parser.add_argument('--data_root', default='/mnt/ssd1/lifa_rdata/det/kitti', 
+    parser.add_argument('--data_root', required=True, default='/mnt/ssd1/lifa_rdata/det/kitti', 
                         help='your data root for kitti')
     parser.add_argument('--saved_path', default='pillar_logs')
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=2)
-    parser.add_argument('--nclasses', type=int, default=3)
+    parser.add_argument('--nclasses', required=True, type=int, default=3)
     parser.add_argument('--init_lr', type=float, default=0.00025)
     parser.add_argument('--max_epoch', type=int, default=160)
     parser.add_argument('--log_freq', type=int, default=8)
