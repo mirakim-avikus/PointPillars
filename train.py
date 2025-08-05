@@ -8,7 +8,7 @@ import yaml
 import numpy as np
 
 from pointpillars.utils import setup_seed, vis_pc, keep_bbox_from_image_range, bbox3d2corners_camera, vis_img_3d, read_calib, bbox3d2corners, keep_bbox_from_lidar_range, read_label, points_camera2image, bbox_camera2lidar
-from pointpillars.dataset import Kitti, Avikus, get_dataloader
+from pointpillars.dataset import Avikus, get_dataloader
 from pointpillars.model import PointPillars
 from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
@@ -44,17 +44,10 @@ def save_summary(writer, loss_dict, global_step, tag, lr=None, momentum=None):
 
 def main(args):
     setup_seed()
-    prefix = args.data_root
-    if 'avikus' in prefix:
-        train_dataset = Avikus(data_root=args.data_root,
-                            split='train')
-        val_dataset = Avikus(data_root=args.data_root,
-                            split='val')
-    else:
-        train_dataset = Kitti(data_root=args.data_root,
-                            split='train')
-        val_dataset = Kitti(data_root=args.data_root,
-                            split='val')
+    train_dataset = Avikus(data_root=args.data_root,
+                        split='train')
+    val_dataset = Avikus(data_root=args.data_root,
+                        split='val')
 
     train_dataloader = get_dataloader(dataset=train_dataset, 
                                       batch_size=args.batch_size, 
@@ -65,25 +58,14 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    if 'avikus' in prefix:
-        point_cloud_range=[0, -50., -10., 250., 50., 10.]
-        pcd_limit_range = np.array([0, -50., -10., 250., 50., 10.], dtype=np.float32)
-        voxel_size=[0.16, 0.16, 4]
-    else:
-        point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]
-        pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
-        voxel_size=[0.16, 0.16, 4]
+    point_cloud_range=[0, -100., -10., 250., 100., 30.]
+    pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
+    voxel_size=[0.16, 0.16, 4]
 
     if not args.no_cuda:
-        if 'avikus' in prefix:
-            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size=voxel_size, prefix='avikus').cuda()
-        else:
-            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size, prefix='kitti').cuda()
+        pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size=voxel_size, prefix='avikus').cuda()
     else:
-        if 'avikus' in prefix:
-            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size,  prefix='avikus')
-        else:
-            pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size,  prefix='kitti')
+        pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size,  prefix='avikus')
     loss_func = Loss()
 
     # load pretrained weight 
@@ -151,32 +133,24 @@ def main(args):
                 print(f'prediction is invalid in {data_name}.png')
                 continue
 
-            if 'kitti' in prefix:
-                gt_path = os.path.join(args.data_root, 'training', 'label_2', f'{data_name}.txt')
-                calib_path = os.path.join(args.data_root, 'training', 'calib', f'{data_name}.txt')
-                img_path = os.path.join(args.data_root, data_dict['batched_img_info'][0]['image_path'])
-                calib_info = read_calib(calib_path)
-                tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
-            else:
-                calib_info = read_calib(f"{os.path.normpath(args.data_root)}/calib_{os.path.basename(os.path.normpath(args.data_root))}.txt")
-                calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'),"lidar.yaml")
-                with open(calib_path_yaml, 'rb') as f:
-                    calib = yaml.safe_load(f)
-                cam = calib['camera']
-                K = np.array([
-                    [cam['fx'], cam['skew'], cam['cx']],
-                    [0, cam['fy'], cam['cy']],
-                    [0, 0, 1]
-                ], dtype = np.float32)
-                D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-                rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-                tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-                R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-                tr_velo_to_cam = np.identity(4)
-                tr_velo_to_cam[:3, :3] = R
-                tr_velo_to_cam[:3, -1] = tvec
-                parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
+            calib_info = read_calib(f"{os.path.normpath(args.data_root)}/calib_{os.path.basename(os.path.normpath(args.data_root))}.txt")
+            calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'),"lidar.yaml")
+            with open(calib_path_yaml, 'rb') as f:
+                calib = yaml.safe_load(f)
+            cam = calib['camera']
+            K = np.array([
+                [cam['fx'], cam['skew'], cam['cx']],
+                [0, cam['fy'], cam['cy']],
+                [0, 0, 1]
+            ], dtype = np.float32)
+            D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+            rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+            tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
+            R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
+            tr_velo_to_cam = np.identity(4)
+            lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+            tr_velo_to_cam[:3, :3] = R@lidar2avikus
+            tr_velo_to_cam[:3, -1] = tvec
 
             r0_rect = calib_info['R0_rect'].astype(np.float32)
             P2 = calib_info['P2'].astype(np.float32)
@@ -184,10 +158,7 @@ def main(args):
             img = cv2.imread(img_path)
             image_shape = img.shape[:2]
 
-            if 'kitti' in prefix:
-                result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, prefix='kitti')
-            else:
-                result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
+            result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
             result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
             lidar_bboxes = result_filter['lidar_bboxes']
             labels, scores = result_filter['labels'], result_filter['scores']
@@ -314,40 +285,33 @@ def main(args):
                     print(f'prediction is invalid in {data_name}.png')
                     continue
 
-                if 'kitti' in prefix:
-                    gt_path = os.path.join(args.data_root, 'training', 'label_2', f'{data_name}.txt')
-                    calib_path = os.path.join(args.data_root, 'training', 'calib', f'{data_name}.txt')
-                    img_path = os.path.join(args.data_root, data_dict['batched_img_info'][0]['image_path'])
-                    calib_info = read_calib(calib_path)
-                    tr_velo_to_cam = calib_info['Tr_velo_to_cam'].astype(np.float32)
+                lidar_dir = os.path.join(args.data_root, 'lidar', 'flippedData')
+                lidar_name = find_closest_lidar(lidar_dir, data_name)
+                gt_path = os.path.join(args.data_root,  'annos_dir', f'{lidar_name}.txt')
+                calib_path = os.path.join(args.data_root, f'calib_{os.path.basename(os.path.normpath(args.data_root))}.txt')
+                parent_path = os.path.dirname(os.path.normpath(args.data_root))
+                img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
 
-                else:   # avikus
-                    lidar_dir = os.path.join(args.data_root, 'lidar', 'flippedData')
-                    lidar_name = find_closest_lidar(lidar_dir, data_name)
-                    gt_path = os.path.join(args.data_root,  'annos_dir', f'{lidar_name}.txt')
-                    calib_path = os.path.join(args.data_root, f'calib_{os.path.basename(os.path.normpath(args.data_root))}.txt')
-                    parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                    img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
+                data_root = args.data_root
+                calib_path_yaml = os.path.join(*os.path.normpath(data_root).split('/'), "lidar.yaml")
+                with open(calib_path_yaml, 'rb') as f:
+                    calib = yaml.safe_load(f)
+                cam = calib['camera']
+                K = np.array([
+                    [cam['fx'], cam['skew'], cam['cx']],
+                    [0, cam['fy'], cam['cy']],
+                    [0, 0, 1]
+                ], dtype = np.float32)
+                D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
 
-                    data_root = args.data_root
-                    calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'), "lidar.yaml")
-                    with open(calib_path_yaml, 'rb') as f:
-                        calib = yaml.safe_load(f)
-                    cam = calib['camera']
-                    K = np.array([
-                        [cam['fx'], cam['skew'], cam['cx']],
-                        [0, cam['fy'], cam['cy']],
-                        [0, 0, 1]
-                    ], dtype = np.float32)
-                    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+                rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+                tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
 
-                    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-                    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-
-                    tr_velo_to_cam_3x3, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-                    tr_velo_to_cam = np.identity(4)
-                    tr_velo_to_cam[:3, :3] = tr_velo_to_cam_3x3
-                    tr_velo_to_cam[:3, -1] = tvec
+                R, _ = cv2.Rodrigues(rvec)
+                tr_velo_to_cam = np.identity(4)
+                lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+                tr_velo_to_cam[:3, :3] = R@lidar2avikus
+                tr_velo_to_cam[:3, -1] = tvec
 
                 calib_info = read_calib(calib_path)
                 gt_label = read_label(gt_path)
@@ -357,10 +321,8 @@ def main(args):
 
                 img = cv2.imread(img_path, 1)
                 image_shape = img.shape[:2]
-                if 'kitti' in prefix:
-                    result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, prefix='kitti')
-                else:
-                    result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
+
+                result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
                 result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
                 lidar_bboxes = result_filter['lidar_bboxes']
                 labels, scores = result_filter['labels'], result_filter['scores']
@@ -369,15 +331,7 @@ def main(args):
                 location = gt_label['location']
                 rotation_y = gt_label['rotation_y']
                 gt_labels = np.array([CLASSES.get(item, -1) for item in gt_label['name']])
-                if 'kitti' in prefix:
-                    sel = gt_labels != -1
-                else:
-                    sel = [True for _ in range(len(gt_labels))]
-                gt_labels = gt_labels[sel]
-                bboxes_camera = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
-                gt_lidar_bboxes = bbox_camera2lidar(bboxes_camera, tr_velo_to_cam, r0_rect)
-                bboxes_camera = bboxes_camera[sel]
-                gt_lidar_bboxes = gt_lidar_bboxes[sel]
+                gt_lidar_bboxes = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
 
                 gt_labels = [-1] * len(gt_label['name']) # to distinguish between the ground truth and the predictions
                     
@@ -389,12 +343,10 @@ def main(args):
 
                 bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes'] 
                 bboxes_corners = bbox3d2corners_camera(camera_bboxes)
-                if 'kitti' in prefix:
-                    image_points = points_camera2image(bboxes_corners, P2)
-                else:
-                    points_normalized = bboxes_corners[:, :, :2] / bboxes_corners[:, :, 2:]
-                    points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D)
-                    image_points = points_distorted.reshape(bboxes_corners.shape[0], -1, 2)
+
+                points_normalized = bboxes_corners[:, :, :2] / bboxes_corners[:, :, 2:]
+                points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D)
+                image_points = points_distorted.reshape(bboxes_corners.shape[0], -1, 2)
 
                 img = vis_img_3d(img, image_points, labels, rt=True)
                 os.makedirs('result_imgs', exist_ok=True)
@@ -404,12 +356,9 @@ def main(args):
                 if global_step % args.log_freq == 0:
                     save_summary(writer, loss_dict, global_step, 'val')
                     # add projected image w/ bbox
-                    if 'avikus' in prefix:
-                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-                        writer.add_image('3D_BBox_Prediction', img_tensor[0], global_step)
-                    else:
-                        continue
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+                    writer.add_image('3D_BBox_Prediction', img_tensor[0], global_step)
 
                 val_step += 1
         pointpillars.train()
