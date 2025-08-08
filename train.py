@@ -47,6 +47,31 @@ def save_summary(writer, loss_dict, global_step, tag, lr=None, momentum=None):
         writer.add_scalar('momentum', momentum, global_step)
 
 
+def get_parameters(calib_path_yaml, calib_info):
+    with open(calib_path_yaml, 'rb') as f:
+        calib = yaml.safe_load(f)
+    cam = calib['camera']
+    K = np.array([
+        [cam['fx'], cam['skew'], cam['cx']],
+        [0, cam['fy'], cam['cy']],
+        [0, 0, 1]
+    ], dtype = np.float32)
+    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+
+    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
+
+    R, _ = cv2.Rodrigues(rvec)
+    tr_velo_to_cam = np.identity(4)
+    lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+    tr_velo_to_cam[:3, :3] = R@lidar2avikus
+    tr_velo_to_cam[:3, -1] = tvec
+
+    r0_rect = calib_info['R0_rect'].astype(np.float32)
+    P2 = calib_info['P2'].astype(np.float32)
+    return tr_velo_to_cam, r0_rect, P2, K, D
+
+
 def main(args):
     setup_seed()
     train_dataset = Avikus(data_root=args.data_root,
@@ -63,7 +88,7 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    point_cloud_range=[0, -100., -10., 250., 100., 30.]
+    point_cloud_range=[0, -50., -10., 200., 50., 30.]
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
     voxel_size=[0.16, 0.16, 4]
 
@@ -76,7 +101,15 @@ def main(args):
     # load pretrained weight 
     checkpoint = torch.load("pretrained/epoch_160.pth")
     model_dict = pointpillars.state_dict()
-    pretrained_dict = {k: v for k, v in checkpoint.items() if k in model_dict and v.size() == model_dict[k].size()}
+    pretrained_dict = {}
+    for k, v in checkpoint.items():
+        if k in model_dict:
+            if v.size() == model_dict[k].size():
+                pretrained_dict[k] = v
+            else:
+                pretrained_dict[k] = model_dict[k]
+                pretrained_dict[k][:v.shape[0]] = v
+
     model_dict.update(pretrained_dict)
     pointpillars.load_state_dict(model_dict)
 
@@ -122,6 +155,17 @@ def main(args):
             batched_labels = data_dict['batched_labels']
             batched_difficulty = data_dict['batched_difficulty']
 
+            for k, v in pointpillars.state_dict().items():
+                if torch.isnan(v).any():
+                    import pdb 
+                    pdb.set_trace()
+
+            for box in batched_gt_bboxes:
+                if len(box) == 0:
+                    print(f'batched gt bboxes : 0!')
+                    import pdb
+                    pdb.set_trace()
+
             # visualize GT bbox
             vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
             bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
@@ -141,28 +185,11 @@ def main(args):
             if result_filter == None:
                 print(f'prediction is invalid in {data_name}.png')
                 continue
-
+            print(f'start analyzing data : {data_name}')
             calib_info = read_calib(f"{os.path.normpath(args.data_root)}/calib_{os.path.basename(os.path.normpath(args.data_root))}.txt")
             calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'),"lidar.yaml")
-            with open(calib_path_yaml, 'rb') as f:
-                calib = yaml.safe_load(f)
-            cam = calib['camera']
-            K = np.array([
-                [cam['fx'], cam['skew'], cam['cx']],
-                [0, cam['fy'], cam['cy']],
-                [0, 0, 1]
-            ], dtype = np.float32)
-            D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-            rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-            tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-            R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-            tr_velo_to_cam = np.identity(4)
-            lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-            tr_velo_to_cam[:3, :3] = R@lidar2avikus
-            tr_velo_to_cam[:3, -1] = tvec
 
-            r0_rect = calib_info['R0_rect'].astype(np.float32)
-            P2 = calib_info['P2'].astype(np.float32)
+            tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
             parent_path = os.path.dirname(os.path.normpath(args.data_root))
             img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
@@ -209,6 +236,9 @@ def main(args):
                                   batched_bbox_reg=batched_bbox_reg, 
                                   batched_dir_labels=batched_dir_labels)
             
+            loss_str = " | ".join([f"{k}: {v:.4f}" for k, v in loss_dict.items()])
+            print(f"train loss: {loss_str}")
+
             loss = loss_dict['total_loss']
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(pointpillars.parameters(), max_norm=35)
@@ -248,6 +278,19 @@ def main(args):
                                 mode='train',
                                 batched_gt_bboxes=batched_gt_bboxes, 
                                 batched_gt_labels=batched_labels)
+
+                device = orig_bbox_cls_pred.device
+                feature_map_size = torch.tensor(list(orig_bbox_cls_pred.size()[-2:]), device=device)
+                anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
+                batch_size = len(batched_pts)
+                batched_anchors = [anchors for _ in range(batch_size)]
+                result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
+                data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
+
+                if result_filter == None:
+                    print(f'prediction is invalid in {data_name}.png')
+                    continue
+
                 bbox_cls_pred = orig_bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, args.nclasses)
                 bbox_pred = orig_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
                 bbox_dir_cls_pred = orig_bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
@@ -261,10 +304,11 @@ def main(args):
                 
                 pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < args.nclasses)
                 bbox_pred = bbox_pred[pos_idx]
+                bbox_pred_vis = bbox_pred.detach().clone()
                 batched_bbox_reg = batched_bbox_reg[pos_idx]
                 # sin(a - b) = sin(a)*cos(b) - cos(a)*sin(b)
-                bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1]) * torch.cos(batched_bbox_reg[:, -1])
-                batched_bbox_reg[:, -1] = torch.cos(bbox_pred[:, -1]) * torch.sin(batched_bbox_reg[:, -1])
+                bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1].clone()) * torch.cos(batched_bbox_reg[:, -1].clone())
+                batched_bbox_reg[:, -1] = torch.cos(bbox_pred[:, -1].clone()) * torch.sin(batched_bbox_reg[:, -1].clone())
                 bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
                 batched_dir_labels = batched_dir_labels[pos_idx]
 
@@ -280,6 +324,10 @@ def main(args):
                                     num_cls_pos=num_cls_pos, 
                                     batched_bbox_reg=batched_bbox_reg, 
                                     batched_dir_labels=batched_dir_labels)
+
+                loss_str = " | ".join([f"{k}: {v:.4f}" for k, v in loss_dict.items()])
+                print(f"val loss: {loss_str}")
+
                 # visualize image
                 # vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
 
@@ -305,30 +353,10 @@ def main(args):
 
                 data_root = args.data_root
                 calib_path_yaml = os.path.join(*os.path.normpath(data_root).split('/'), "lidar.yaml")
-                with open(calib_path_yaml, 'rb') as f:
-                    calib = yaml.safe_load(f)
-                cam = calib['camera']
-                K = np.array([
-                    [cam['fx'], cam['skew'], cam['cx']],
-                    [0, cam['fy'], cam['cy']],
-                    [0, 0, 1]
-                ], dtype = np.float32)
-                D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-
-                rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-                tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-
-                R, _ = cv2.Rodrigues(rvec)
-                tr_velo_to_cam = np.identity(4)
-                lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-                tr_velo_to_cam[:3, :3] = R@lidar2avikus
-                tr_velo_to_cam[:3, -1] = tvec
-
                 calib_info = read_calib(calib_path)
                 gt_label = read_label(gt_path)
 
-                r0_rect = calib_info['R0_rect'].astype(np.float32)
-                P2 = calib_info['P2'].astype(np.float32)
+                tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
                 img = cv2.imread(img_path, 1)
                 image_shape = img.shape[:2]
