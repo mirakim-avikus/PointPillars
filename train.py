@@ -13,14 +13,7 @@ from pointpillars.model import PointPillars
 from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
 
-CLASSES = {
-    # 'human': 0,
-    # 'jetski': 1,
-    'smallboat': 2,
-    'mediumboat': 3,
-    'c-marker': 4,
-    'yacht': 5
-    }
+CLASSES = Avikus.CLASSES
 
 def find_closest_lidar(lidar_dir, data_name):
     lidar_list = sorted(os.listdir(lidar_dir))
@@ -46,6 +39,28 @@ def save_summary(writer, loss_dict, global_step, tag, lr=None, momentum=None):
     if momentum is not None:
         writer.add_scalar('momentum', momentum, global_step)
 
+def get_parameters(calib_path_yaml, calib_info):
+    with open(calib_path_yaml, 'rb') as f:
+        calib = yaml.safe_load(f)
+    cam = calib['camera']
+    K = np.array([
+        [cam['fx'], cam['skew'], cam['cx']],
+        [0, cam['fy'], cam['cy']],
+        [0, 0, 1]
+    ], dtype = np.float32)
+    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+
+    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
+
+    R, _ = cv2.Rodrigues(rvec)
+    tr_velo_to_cam = np.identity(4)
+    tr_velo_to_cam[:3, :3] = R
+    tr_velo_to_cam[:3, -1] = tvec
+
+    r0_rect = calib_info['R0_rect'].astype(np.float32)
+    P2 = calib_info['P2'].astype(np.float32)
+    return tr_velo_to_cam, r0_rect, P2, K, D
 
 def main(args):
     setup_seed()
@@ -67,16 +82,29 @@ def main(args):
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
     voxel_size=[0.16, 0.16, 4]
 
+    num_cls = sorted(CLASSES.values())[-1] + 1
     if not args.no_cuda:
-        pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size=voxel_size, prefix='avikus').cuda()
+        pointpillars = PointPillars(nclasses=num_cls, point_cloud_range=point_cloud_range, voxel_size=voxel_size, prefix='avikus').cuda()
     else:
-        pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size = voxel_size,  prefix='avikus')
+        pointpillars = PointPillars(nclasses=num_cls, point_cloud_range=point_cloud_range, voxel_size = voxel_size, prefix='avikus')
     loss_func = Loss()
 
     # load pretrained weight 
     checkpoint = torch.load("pretrained/epoch_160.pth")
     model_dict = pointpillars.state_dict()
-    pretrained_dict = {k: v for k, v in checkpoint.items() if k in model_dict and v.size() == model_dict[k].size()}
+    pretrained_dict = {}
+    for k, v in checkpoint.items():
+        if k in model_dict:
+            if v.size() == model_dict[k].size():
+                pretrained_dict[k] = v
+            else:
+                pretrained_dict[k] = model_dict[k]
+                pretrained_dict[k][:v.shape[0]] = v
+
+    for k, v in pretrained_dict.items():
+        if torch.isnan(v).any():
+            print(f'k {k} and v {v}')
+
     model_dict.update(pretrained_dict)
     pointpillars.load_state_dict(model_dict)
 
@@ -113,6 +141,8 @@ def main(args):
                             data_dict[key][j] = data_dict[key][j].cuda()
             
             optimizer.zero_grad()
+            data_key = os.path.normpath(data_dict['batched_img_info'][0]['image_path']).split('/')[0]
+            data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
 
             batched_pts = data_dict['batched_pts']
             batched_gt_bboxes = data_dict['batched_gt_bboxes']
@@ -121,6 +151,12 @@ def main(args):
                 continue
             batched_labels = data_dict['batched_labels']
             batched_difficulty = data_dict['batched_difficulty']
+
+            for box in batched_gt_bboxes:
+                if len(box) == 0:
+                    print(f'batched gt bboxes : 0!')
+                    import pdb
+                    pdb.set_trace()
 
             # visualize GT bbox
             vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
@@ -136,36 +172,17 @@ def main(args):
             batch_size = len(batched_pts)
             batched_anchors = [anchors for _ in range(batch_size)]
             result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors)[0]
-            data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
 
             if result_filter == None:
                 print(f'prediction is invalid in {data_name}.png')
                 continue
 
-            calib_info = read_calib(f"{os.path.normpath(args.data_root)}/calib_{os.path.basename(os.path.normpath(args.data_root))}.txt")
-            calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'),"lidar.yaml")
-            with open(calib_path_yaml, 'rb') as f:
-                calib = yaml.safe_load(f)
-            cam = calib['camera']
-            K = np.array([
-                [cam['fx'], cam['skew'], cam['cx']],
-                [0, cam['fy'], cam['cy']],
-                [0, 0, 1]
-            ], dtype = np.float32)
-            D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-            rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-            tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-            R, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-            tr_velo_to_cam = np.identity(4)
-            lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-            tr_velo_to_cam[:3, :3] = R@lidar2avikus
-            tr_velo_to_cam[:3, -1] = tvec
-
-            r0_rect = calib_info['R0_rect'].astype(np.float32)
-            P2 = calib_info['P2'].astype(np.float32)
+            calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
+            calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key, "new_lidar.yaml")
+            tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
             parent_path = os.path.dirname(os.path.normpath(args.data_root))
-            img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
+            img_path = os.path.join(os.path.normpath(args.data_root), *parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
             img = cv2.imread(img_path)
             image_shape = img.shape[:2]
 
@@ -175,7 +192,7 @@ def main(args):
             labels, scores = result_filter['labels'], result_filter['scores']
             vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
             
-            bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, args.nclasses)
+            bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
             bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
             bbox_dir_cls_pred = bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
 
@@ -186,7 +203,7 @@ def main(args):
             batched_dir_labels = anchor_target_dict['batched_dir_labels'].reshape(-1)
             # batched_dir_labels_weights = anchor_target_dict['batched_dir_labels_weights'].reshape(-1)
             
-            pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < args.nclasses)
+            pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
             bbox_pred = bbox_pred[pos_idx]
             bbox_pred_vis = bbox_pred.detach().clone()
             batched_bbox_reg = batched_bbox_reg[pos_idx]
@@ -196,9 +213,9 @@ def main(args):
             bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
             batched_dir_labels = batched_dir_labels[pos_idx]
 
-            num_cls_pos = (batched_bbox_labels < args.nclasses).sum()
+            num_cls_pos = (batched_bbox_labels < num_cls).sum()
             bbox_cls_pred = bbox_cls_pred[batched_label_weights > 0]
-            batched_bbox_labels[batched_bbox_labels < 0] = args.nclasses
+            batched_bbox_labels[batched_bbox_labels < 0] = num_cls
             batched_bbox_labels = batched_bbox_labels[batched_label_weights > 0]
 
             loss_dict = loss_func(bbox_cls_pred=bbox_cls_pred,
@@ -208,7 +225,8 @@ def main(args):
                                   num_cls_pos=num_cls_pos, 
                                   batched_bbox_reg=batched_bbox_reg, 
                                   batched_dir_labels=batched_dir_labels)
-            
+            for k, v in loss_dict.items():
+                print(f'train loss {k} : {v}')
             loss = loss_dict['total_loss']
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(pointpillars.parameters(), max_norm=35)
@@ -248,7 +266,20 @@ def main(args):
                                 mode='train',
                                 batched_gt_bboxes=batched_gt_bboxes, 
                                 batched_gt_labels=batched_labels)
-                bbox_cls_pred = orig_bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, args.nclasses)
+
+                device = orig_bbox_cls_pred.device
+                feature_map_size = torch.tensor(list(orig_bbox_cls_pred.size()[-2:]), device=device)
+                anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
+                batch_size = len(batched_pts)
+                batched_anchors = [anchors for _ in range(batch_size)]
+                result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
+                data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
+
+                if result_filter == None:
+                    print(f'prediction is invalid in {data_name}.png')
+                    continue
+
+                bbox_cls_pred = orig_bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
                 bbox_pred = orig_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
                 bbox_dir_cls_pred = orig_bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
 
@@ -259,18 +290,18 @@ def main(args):
                 batched_dir_labels = anchor_target_dict['batched_dir_labels'].reshape(-1)
                 # batched_dir_labels_weights = anchor_target_dict['batched_dir_labels_weights'].reshape(-1)
                 
-                pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < args.nclasses)
+                pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
                 bbox_pred = bbox_pred[pos_idx]
                 batched_bbox_reg = batched_bbox_reg[pos_idx]
                 # sin(a - b) = sin(a)*cos(b) - cos(a)*sin(b)
-                bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1]) * torch.cos(batched_bbox_reg[:, -1])
-                batched_bbox_reg[:, -1] = torch.cos(bbox_pred[:, -1]) * torch.sin(batched_bbox_reg[:, -1])
+                bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1].clone()) * torch.cos(batched_bbox_reg[:, -1].clone())
+                batched_bbox_reg[:, -1] = torch.cos(bbox_pred[:, -1].clone()) * torch.sin(batched_bbox_reg[:, -1].clone())
                 bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
                 batched_dir_labels = batched_dir_labels[pos_idx]
 
-                num_cls_pos = (batched_bbox_labels < args.nclasses).sum()
+                num_cls_pos = (batched_bbox_labels < num_cls).sum()
                 bbox_cls_pred = bbox_cls_pred[batched_label_weights > 0]
-                batched_bbox_labels[batched_bbox_labels < 0] = args.nclasses
+                batched_bbox_labels[batched_bbox_labels < 0] = num_cls
                 batched_bbox_labels = batched_bbox_labels[batched_label_weights > 0]
 
                 loss_dict = loss_func(bbox_cls_pred=bbox_cls_pred,
@@ -280,6 +311,9 @@ def main(args):
                                     num_cls_pos=num_cls_pos, 
                                     batched_bbox_reg=batched_bbox_reg, 
                                     batched_dir_labels=batched_dir_labels)
+
+                for k, v in loss_dict.items():
+                    print(f'eval loss {k} : {v}')
                 # visualize image
                 # vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
 
@@ -305,30 +339,9 @@ def main(args):
 
                 data_root = args.data_root
                 calib_path_yaml = os.path.join(*os.path.normpath(data_root).split('/'), "lidar.yaml")
-                with open(calib_path_yaml, 'rb') as f:
-                    calib = yaml.safe_load(f)
-                cam = calib['camera']
-                K = np.array([
-                    [cam['fx'], cam['skew'], cam['cx']],
-                    [0, cam['fy'], cam['cy']],
-                    [0, 0, 1]
-                ], dtype = np.float32)
-                D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-
-                rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-                tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-
-                R, _ = cv2.Rodrigues(rvec)
-                tr_velo_to_cam = np.identity(4)
-                lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-                tr_velo_to_cam[:3, :3] = R@lidar2avikus
-                tr_velo_to_cam[:3, -1] = tvec
-
                 calib_info = read_calib(calib_path)
                 gt_label = read_label(gt_path)
-
-                r0_rect = calib_info['R0_rect'].astype(np.float32)
-                P2 = calib_info['P2'].astype(np.float32)
+                tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
                 img = cv2.imread(img_path, 1)
                 image_shape = img.shape[:2]
@@ -382,7 +395,7 @@ if __name__ == '__main__':
     parser.add_argument('--saved_path', default='pillar_logs')
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=2)
-    parser.add_argument('--nclasses', required=True, type=int, default=3)
+    parser.add_argument('--nclasses', type=int, default=3)
     parser.add_argument('--init_lr', type=float, default=0.00025)
     parser.add_argument('--max_epoch', type=int, default=160)
     parser.add_argument('--log_freq', type=int, default=8)

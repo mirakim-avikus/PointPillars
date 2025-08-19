@@ -38,11 +38,13 @@ class Avikus(Dataset):
 
     CLASSES = {
         # 'human': 0,
-        # 'jetski': 1,
+        'jetski': 1,
         'smallboat': 2,
         'mediumboat': 3,
         'c-marker': 4,
-        'yacht': 5
+        'yacht': 5,
+        'pole': 6,
+        'dinghyboat': 7
         }
 
     def __init__(self, data_root, split, pts_prefix='velodyne_reduced'):
@@ -61,7 +63,7 @@ class Avikus(Dataset):
         self.data_aug_config=dict(
             db_sampler=dict(
                 db_sampler=db_sampler,
-                sample_groups=dict(smallboat=2, mediumboat=2, **{"c-marker": 2}, yacht=2)
+                sample_groups=dict(jetski=3, smallboat=2, mediumboat=2, **{"c-marker": 2}, yacht=2, pole=3, dinghyboat=3)
                 ),
             object_noise=dict(
                 num_try=100,
@@ -74,32 +76,9 @@ class Avikus(Dataset):
                 scale_ratio_range=[0.95, 1.05],
                 translation_std=[0, 0, 0]
                 ), 
-            point_range_filter=[0, -50.0, -10., 250.0, 50.0, 10.],
-            object_range_filter=[0, -50.0, -10., 250.0, 50.0, 10.]             
+            point_range_filter=[0, -50., -10., 200., 50., 30.],
+            object_range_filter=[0, -50., -10., 200., 50., 30.]           
         )
-
-        calib_path_yaml = os.path.join(data_root, "lidar.yaml")
-        with open(calib_path_yaml, 'rb') as f:
-            calib = yaml.safe_load(f)
-
-        cam = calib['camera']
-        K = np.array([
-            [cam['fx'], cam['skew'], cam['cx']],
-            [0, cam['fy'], cam['cy']],
-            [0, 0, 1]
-        ], dtype = np.float32)
-
-        D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-
-        rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-        tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-
-        tr_velo_to_cam, _ = cv2.Rodrigues(rvec)                                  # avikus2camera
-        self.tr_velo_to_cam_4x4 = np.identity(4)
-        lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-        self.tr_velo_to_cam_4x4[:3, :3] = tr_velo_to_cam @ lidar2avikus
-        self.tr_velo_to_cam_4x4[:3, -1] = tvec
-
 
     def remove_dont_care(self, annos_info):
         keep_ids = [i for i, name in enumerate(annos_info['name']) if name != 'DontCare']
@@ -112,7 +91,7 @@ class Avikus(Dataset):
         for k, v in db_infos.items():
             db_infos[k] = [item for item in v if item['difficulty'] != -1]
 
-        filter_thrs = dict(smallboat=10, mediumboat=15, **{"c-marker": 10}, yacht=10)
+        filter_thrs = dict(jetski=10, smallboat=10, mediumboat=15, **{"c-marker": 10}, yacht=10, pole=8, dinghyboat=10)
         for cat in self.CLASSES:
             filter_thr = filter_thrs[cat]
             db_infos[cat] = [item for item in db_infos[cat] if item['num_points_in_gt']>= filter_thr]
