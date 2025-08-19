@@ -88,9 +88,9 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    point_cloud_range=[0, -50., -10., 200., 50., 30.]
+    point_cloud_range=[4, -72., -10., 180., 72., 30.]
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
-    voxel_size=[0.16, 0.16, 4]
+    voxel_size=[0.25, 0.25, 4]
 
     if not args.no_cuda:
         pointpillars = PointPillars(nclasses=args.nclasses, point_cloud_range=point_cloud_range, voxel_size=voxel_size, prefix='avikus').cuda()
