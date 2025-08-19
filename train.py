@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 CLASSES = Avikus.CLASSES
 
 def find_closest_lidar(lidar_dir, data_name):
-    lidar_list = sorted(os.listdir(lidar_dir))
+    lidar_list = sorted([lidar for lidar in os.listdir(lidar_dir) if lidar.endswith('.pcd')])
     lidar_ts_list = [int(f.split('.')[0]) for f in lidar_list]
     img_ts = int(data_name)
 
@@ -350,21 +350,21 @@ def main(args):
                 batch_size = len(batched_pts)
                 batched_anchors = [anchors for _ in range(batch_size)]
                 result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
+                data_key = os.path.normpath(data_dict['batched_img_info'][0]['image_path']).split('/')[0]
                 data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
 
                 if result_filter == None:
                     print(f'prediction is invalid in {data_name}.png')
                     continue
-
-                lidar_dir = os.path.join(args.data_root, 'lidar', 'flippedData')
+                lidar_dir = os.path.join(args.data_root, data_key, 'sample')
                 lidar_name = find_closest_lidar(lidar_dir, data_name)
-                gt_path = os.path.join(args.data_root,  'annos_dir', f'{lidar_name}.txt')
-                calib_path = os.path.join(args.data_root, f'calib_{os.path.basename(os.path.normpath(args.data_root))}.txt')
+                gt_path = os.path.join(args.data_root, data_key, 'output', data_key, "label", f'{lidar_name}.txt')
+                calib_path = os.path.join(args.data_root, data_key, f'calib_{data_key}.txt')
                 parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                img_path = os.path.join(*parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
+                img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
 
                 data_root = args.data_root
-                calib_path_yaml = os.path.join(*os.path.normpath(data_root).split('/'), "lidar.yaml")
+                calib_path_yaml = os.path.join(*os.path.normpath(data_root).split('/'), data_key, "new_lidar.yaml")
                 calib_info = read_calib(calib_path)
                 gt_label = read_label(gt_path)
                 tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
