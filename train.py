@@ -62,6 +62,31 @@ def get_parameters(calib_path_yaml, calib_info):
     P2 = calib_info['P2'].astype(np.float32)
     return tr_velo_to_cam, r0_rect, P2, K, D
 
+def get_parameters(calib_path_yaml, calib_info):
+    with open(calib_path_yaml, 'rb') as f:
+        calib = yaml.safe_load(f)
+    cam = calib['camera']
+    K = np.array([
+        [cam['fx'], cam['skew'], cam['cx']],
+        [0, cam['fy'], cam['cy']],
+        [0, 0, 1]
+    ], dtype = np.float32)
+    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
+
+    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
+    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
+
+    R, _ = cv2.Rodrigues(rvec)
+    tr_velo_to_cam = np.identity(4)
+    lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+    tr_velo_to_cam[:3, :3] = R@lidar2avikus
+    tr_velo_to_cam[:3, -1] = tvec
+
+    r0_rect = calib_info['R0_rect'].astype(np.float32)
+    P2 = calib_info['P2'].astype(np.float32)
+    return tr_velo_to_cam, r0_rect, P2, K, D
+
+
 def main(args):
     setup_seed()
     train_dataset = Avikus(data_root=args.data_root,
@@ -78,9 +103,9 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    point_cloud_range=[0, -100., -10., 250., 100., 30.]
+    point_cloud_range=[4, -72., -10., 180., 72., 30.]
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
-    voxel_size=[0.16, 0.16, 4]
+    voxel_size=[0.25, 0.25, 4]
 
     num_cls = sorted(CLASSES.values())[-1] + 1
     if not args.no_cuda:
@@ -292,6 +317,7 @@ def main(args):
                 
                 pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
                 bbox_pred = bbox_pred[pos_idx]
+                bbox_pred_vis = bbox_pred.detach().clone()
                 batched_bbox_reg = batched_bbox_reg[pos_idx]
                 # sin(a - b) = sin(a)*cos(b) - cos(a)*sin(b)
                 bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1].clone()) * torch.cos(batched_bbox_reg[:, -1].clone())

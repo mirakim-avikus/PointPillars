@@ -46,14 +46,27 @@ class Loss(nn.Module):
              (1 - self.alpha) * bbox_cls_pred_sigmoid.pow(self.gamma) * (1 - batched_labels) # (n, 3)
         cls_loss = F.binary_cross_entropy(bbox_cls_pred_sigmoid, batched_labels, reduction='none')
         cls_loss = cls_loss * weights
-        cls_loss = cls_loss.sum() / num_cls_pos
+        if num_cls_pos > 0:
+            cls_loss = cls_loss.sum() / num_cls_pos
+        else:
+            print("[Warning] No positive samples in batch → cls_loss = 0")
+            cls_loss = cls_loss.sum() * 0.0
         
         # 2. regression loss
-        reg_loss = self.smooth_l1_loss(bbox_pred, batched_bbox_reg)
-        reg_loss = reg_loss.sum() / reg_loss.size(0)
+        if bbox_pred.size(0) > 0:
+            reg_loss = self.smooth_l1_loss(bbox_pred, batched_bbox_reg)
+            reg_loss = reg_loss.sum() / reg_loss.size(0)
+        else:
+            print("[Warning] No bbox regression targets → reg_loss = 0")
+            reg_loss = torch.tensor(0.0, device=bbox_pred.device, requires_grad = True)
+
 
         # 3. direction cls loss
-        dir_cls_loss = self.dir_cls(bbox_dir_cls_pred, batched_dir_labels)
+        if bbox_dir_cls_pred.size(0) > 0:
+            dir_cls_loss = self.dir_cls(bbox_dir_cls_pred, batched_dir_labels)
+        else:
+            print("[Warning] No dir classification targets → dir_cls_loss = 0")
+            dir_cls_loss = torch.tensor(0.0, device=bbox_dir_cls_pred.device, requires_grad = True)
 
         # 4. total loss
         total_loss = self.cls_w * cls_loss + self.reg_w * reg_loss + self.dir_w * dir_cls_loss
