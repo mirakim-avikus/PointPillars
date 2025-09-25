@@ -209,7 +209,12 @@ def main(args):
                 continue
 
             calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
-            calib_path_yaml = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key, "new_lidar.yaml")
+            calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
+            new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
+            old_yaml = os.path.join(calib_dir, "lidar.yaml")
+        
+            # TODO: temporary fix — replace with permanent calibration loader
+            calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
             tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
             parent_path = os.path.dirname(os.path.normpath(args.data_root))
@@ -372,8 +377,12 @@ def main(args):
                 img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
 
                 data_root = args.data_root
-                calib_path_yaml = os.path.join(*os.path.normpath(data_root).split('/'), data_key, "new_lidar.yaml")
-                calib_info = read_calib(calib_path)
+                calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
+                new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
+                old_yaml = os.path.join(calib_dir, "lidar.yaml")
+
+                # TODO: temporary fix — replace with permanent calibration loader
+                calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
                 gt_label = read_label(gt_path)
                 tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
