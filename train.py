@@ -114,24 +114,28 @@ def main(args):
         pointpillars = PointPillars(nclasses=num_cls, point_cloud_range=point_cloud_range, voxel_size = voxel_size, prefix='avikus')
     loss_func = Loss()
 
-    # load pretrained weight 
-    checkpoint = torch.load("pretrained/epoch_160.pth")
-    model_dict = pointpillars.state_dict()
-    pretrained_dict = {}
-    for k, v in checkpoint.items():
-        if k in model_dict:
-            if v.size() == model_dict[k].size():
-                pretrained_dict[k] = v
-            else:
-                pretrained_dict[k] = model_dict[k]
-                pretrained_dict[k][:v.shape[0]] = v
+    if args.pretrained:
+        # load pretrained weight 
+        print(f'weight loaded from {args.pretrained_weight}..')
+        checkpoint = torch.load(args.pretrained_weight)
+        model_dict = pointpillars.state_dict()
+        pretrained_dict = {}
+        for k, v in checkpoint.items():
+            if k in model_dict:
+                if v.size() == model_dict[k].size():
+                    pretrained_dict[k] = v
+                else:
+                    pretrained_dict[k] = model_dict[k]
+                    pretrained_dict[k][:v.shape[0]] = v
 
-    for k, v in pretrained_dict.items():
-        if torch.isnan(v).any():
-            print(f'k {k} and v {v}')
+        for k, v in pretrained_dict.items():
+            if torch.isnan(v).any():
+                print(f'k {k} and v {v}')
 
-    model_dict.update(pretrained_dict)
-    pointpillars.load_state_dict(model_dict)
+        model_dict.update(pretrained_dict)
+        pointpillars.load_state_dict(model_dict)
+    else:
+        print(f'training from scratch..')
 
     max_iters = len(train_dataloader) * args.max_epoch
     init_lr = args.init_lr
@@ -426,6 +430,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_epoch', type=int, default=160)
     parser.add_argument('--log_freq', type=int, default=8)
     parser.add_argument('--ckpt_freq_epoch', type=int, default=20)
+    parser.add_argument('--pretrained', action='store_true', help='whether to use pretrained weight or not')
+    parser.add_argument('--pretrained_weight', type=str, default="pretrained/epoch_160.pth", help='pretrained weight')
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
     args = parser.parse_args()
