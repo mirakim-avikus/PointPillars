@@ -14,6 +14,7 @@ from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
 
 CLASSES = Avikus.CLASSES
+VISUALIZE = False
 
 def find_closest_lidar(lidar_dir, data_name):
     lidar_list = sorted([lidar for lidar in os.listdir(lidar_dir) if lidar.endswith('.pcd')])
@@ -188,7 +189,8 @@ def main(args):
                     pdb.set_trace()
 
             # visualize GT bbox
-            vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
+            if VISUALIZE:
+                vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
             bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
                 pointpillars(batched_pts=batched_pts, 
                              mode='train',
@@ -219,7 +221,8 @@ def main(args):
             result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
             lidar_bboxes = result_filter['lidar_bboxes']
             labels, scores = result_filter['labels'], result_filter['scores']
-            vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
+            if VISUALIZE:
+                vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
             
             bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
             bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
@@ -345,7 +348,8 @@ def main(args):
                 for k, v in loss_dict.items():
                     print(f'eval loss {k} : {v}')
                 # visualize image
-                # vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
+                if VISUALIZE:
+                    vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
 
                 # visualize image
                 device = orig_bbox_cls_pred.device
@@ -392,7 +396,8 @@ def main(args):
                 pred_gt_lidar_bboxes = np.concatenate([lidar_bboxes, gt_lidar_bboxes], axis=0)
                 pred_gt_labels = np.concatenate([labels, gt_labels])
 
-                # vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
+                if VISUALIZE:
+                    vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
                 # pdb.set_trace()
 
                 bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes'] 
