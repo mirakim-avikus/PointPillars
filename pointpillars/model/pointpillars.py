@@ -245,14 +245,14 @@ class PointPillars(nn.Module):
         self.pillar_encoder = PillarEncoder(voxel_size=voxel_size, 
                                             point_cloud_range=point_cloud_range, 
                                             in_channel=9, 
-                                            out_channel=64)
-        self.backbone = Backbone(in_channel=64, 
-                                 out_channels=[64, 128, 256], 
-                                 layer_nums=[3, 5, 5])
-        self.neck = Neck(in_channels=[64, 128, 256], 
+                                            out_channel=48)
+        self.backbone = Backbone(in_channel=48, 
+                                 out_channels=[64, 128, 192], 
+                                 layer_nums=[3, 4, 4])
+        self.neck = Neck(in_channels=[64, 128, 192], 
                          upsample_strides=[1, 2, 4], 
-                         out_channels=[128, 128, 128])
-        self.head = Head(in_channel=384, n_anchors=2*nclasses, n_classes=nclasses)
+                         out_channels=[96, 96, 96])
+        self.head = Head(in_channel=288, n_anchors=2*nclasses, n_classes=nclasses)
         
         # anchors
         ranges = [point_cloud_range for _ in range(nclasses)]
