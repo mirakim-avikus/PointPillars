@@ -14,6 +14,7 @@ from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
 
 CLASSES = Avikus.CLASSES
+ID2NAME = {int(v): k for k, v in CLASSES.items()}
 IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS 
 VISUALIZE = False
 
@@ -412,7 +413,7 @@ def main(args):
                     scores = scores,
                     gt_lidar_bboxes = gt_lidar_bboxes,
                     gt_labels = gt_labels,
-                    id2name = CLASSES,
+                    id2name = ID2NAME,
                     class_iou_3d_thres = IOU_THRESHOLDS,
                     class_iou_bev_thres = None
                 )
