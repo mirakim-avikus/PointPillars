@@ -190,7 +190,6 @@ def main(args):
             for box in batched_gt_bboxes:
                 if len(box) == 0:
                     print(f'batched gt bboxes : 0!')
-                    import pdb
                     pdb.set_trace()
 
             # visualize GT bbox

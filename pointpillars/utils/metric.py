@@ -280,7 +280,7 @@ def eval_per_class(pred_bboxes, pred_scores, pred_labels,
     return ap3d, apbev, matched_errs
 
 def evaluate_predictions(lidar_bboxes, labels, scores,
-                            gt_lidar_bboxes, gt_labes,
+                            gt_lidar_bboxes, gt_labels,
                                 id2name, class_iou_3d_thres, class_iou_bev_thres = None,
                                 iou3d_fn = None, iou_bev_fn = None):
     """
