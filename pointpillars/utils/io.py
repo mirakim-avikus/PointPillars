@@ -148,7 +148,7 @@ def read_label(file_path):
     annotation['occluded'] = np.array([float(line[2]) for line in lines], dtype=np.float32)
     annotation['alpha'] = np.array([line[3] for line in lines], dtype=np.float32)
     annotation['bbox'] = np.array([line[4:8] for line in lines], dtype=np.float32)
-    annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32) # hwl -> camera coordinates (lhw)
+    annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32) # lwh form
     annotation['location'] = np.array([line[11:14] for line in lines], dtype=np.float32)
     annotation['rotation_y'] = -1 * np.array([line[14] for line in lines], dtype=np.float32)
     return annotation
