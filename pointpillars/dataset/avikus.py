@@ -47,7 +47,7 @@ class Avikus(Dataset):
         'dinghyboat': 7
         }
 
-    def __init__(self, data_root, split, pts_prefix='velodyne_reduced'):
+    def __init__(self, data_root, split, point_cloud_range, pts_prefix='velodyne_reduced'):
         assert split in ['train', 'val', 'trainval', 'test']
         self.data_root = data_root
         self.split = split
@@ -76,8 +76,8 @@ class Avikus(Dataset):
                 scale_ratio_range=[0.95, 1.05],
                 translation_std=[0, 0, 0]
                 ), 
-            point_range_filter=[0, -50., -10., 200., 50., 30.],
-            object_range_filter=[0, -50., -10., 200., 50., 30.]           
+            point_range_filter=point_cloud_range,
+            object_range_filter=point_cloud_range         
         )
 
     def remove_dont_care(self, annos_info):

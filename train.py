@@ -90,10 +90,15 @@ def get_parameters(calib_path_yaml, calib_info):
 
 def main(args):
     setup_seed()
+
+    point_cloud_range=[4, -144., -10., 180., 144., 30.]
+    pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
+    voxel_size=[0.25, 0.25, 4]
+
     train_dataset = Avikus(data_root=args.data_root,
-                        split='train')
+                        split='train', point_cloud_range=point_cloud_range)
     val_dataset = Avikus(data_root=args.data_root,
-                        split='val')
+                        split='val', point_cloud_range=point_cloud_range)
 
     train_dataloader = get_dataloader(dataset=train_dataset, 
                                       batch_size=args.batch_size, 
