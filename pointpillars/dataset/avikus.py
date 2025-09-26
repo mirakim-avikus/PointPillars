@@ -47,6 +47,17 @@ class Avikus(Dataset):
         'dinghyboat': 7
         }
 
+    # TODO : check IoU in 2D image detection domain 
+    IOU_THRESHOLDS = {
+        'jetski': 0.5,
+        'smallboat': 0.5,
+        'mediumboat': 0.6,
+        'c-marker': 0.5,
+        'yacht': 0.6,
+        'pole': 0.4,
+        'dinghyboat': 0.5
+    }
+
     def __init__(self, data_root, split, point_cloud_range, pts_prefix='velodyne_reduced'):
         assert split in ['train', 'val', 'trainval', 'test']
         self.data_root = data_root

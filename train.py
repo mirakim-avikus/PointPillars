@@ -7,13 +7,14 @@ import cv2
 import yaml
 import numpy as np
 
-from pointpillars.utils import setup_seed, vis_pc, keep_bbox_from_image_range, bbox3d2corners_camera, vis_img_3d, read_calib, bbox3d2corners, keep_bbox_from_lidar_range, read_label, points_camera2image, bbox_camera2lidar
+from pointpillars.utils import setup_seed, vis_pc, keep_bbox_from_image_range, bbox3d2corners_camera, vis_img_3d, read_calib, keep_bbox_from_lidar_range, read_label, RunningMetrics, evaluate_predictions
 from pointpillars.dataset import Avikus, get_dataloader
 from pointpillars.model import PointPillars
 from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
 
 CLASSES = Avikus.CLASSES
+IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS 
 VISUALIZE = False
 
 def find_closest_lidar(lidar_dir, data_name):
@@ -109,9 +110,8 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    point_cloud_range=[4, -72., -10., 180., 72., 30.]
-    pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
-    voxel_size=[0.25, 0.25, 4]
+    CLASSES_LIST = [name for _, name in sorted(CLASSES.items())]
+    metrics = RunningMetrics(class_names=CLASSES_LIST)
 
     num_cls = sorted(CLASSES.values())[-1] + 1
     if not args.no_cuda:
@@ -406,7 +406,48 @@ def main(args):
                 gt_lidar_bboxes = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
 
                 gt_labels = [-1] * len(gt_label['name']) # to distinguish between the ground truth and the predictions
-                    
+                
+                per_class_ap3d_dict, per_class_apbev_dict, matched_errs = evaluate_predictions(
+                    lidar_bboxes = lidar_bboxes,
+                    labels = labels,
+                    scores = scores,
+                    gt_lidar_bboxes = gt_lidar_bboxes,
+                    gt_labels = gt_labels,
+                    id2name = CLASSES,
+                    class_iou_3d_thres = IOU_THRESHOLDS,
+                    class_iou_bev_thres = None
+                )
+
+                batch_eval_out = {
+                    "ap3d": per_class_ap3d_dict, # {"jetski" : 0.6, ...}
+                    "apbev": per_class_apbev_dict,
+                    "matched_errors": matched_errs  # [{"ate": ..., "aoe_deg": ..., "ase": ...}, ...] 
+                }
+                metrics.update_from_batch(batch_eval_out)
+
+                summary = metrics.compute()
+                print(f"[VAL] score = {summary['score']} | mAP3D = {summary['mAP_3D']} | mAPBEV = {summary['mAP_BEV']} | ATE = {summary['ATE']} | AOE_deg = {summary['AOE_deg']} | ASE = {summary['ASE']}")
+                      
+                writer.add_scalar("val/score", summary['score'], epoch)
+                writer.add_scalar("val/mAP_3D", summary['mAP_3D'], epoch)
+                writer.add_scalar("val/mAP_BEV", summary['mAP_BEV'], epoch)
+                writer.add_scalar("val/ATE", summary['ATE'], epoch)
+                writer.add_scalar("val/AOE_deg", summary['AOE_deg'], epoch)
+                writer.add_scalar("val/ASE", summary['ASE'], epoch)
+
+                best_path = os.path.join(saved_ckpt_path, "best.pth")
+                best_score_txt = os.path.join(saved_ckpt_path, "best_score.txt")
+                prev_best = -1.0
+                if os.path.exists(best_score_txt):
+                    with open(best_score_txt, "r") as f:
+                        prev_best = float(f.read().strip() or -1.0)
+                
+                if summary['score'] > prev_best:
+                    torch.save(pointpillars.state_dict(), best_path)
+                    with open(best_score_txt, "w") as f:
+                        f.write(str(summary["score"]))
+                print(f"[VAL] New best! score={summary['score']} -> saved to {best_path}")
+
                 pred_gt_lidar_bboxes = np.concatenate([lidar_bboxes, gt_lidar_bboxes], axis=0)
                 pred_gt_labels = np.concatenate([labels, gt_labels])
 
