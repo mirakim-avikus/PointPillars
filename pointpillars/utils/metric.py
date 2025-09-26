@@ -289,7 +289,7 @@ def evaluate_predictions(lidar_bboxes, labels, scores,
     id2name : {id:int -> name:str}
     """
     pred_names = np.array([id2name[int(i)] for i in labels], dtype=object)
-    gt_names = np.array([id2name[int(i)] for i in gt_labes], dtype=object)
+    gt_names = np.array([id2name[int(i)] for i in gt_labels], dtype=object)
 
     class_list = sorted(set(list(pred_names) + list(gt_names)))
     per_class_ap3d = {}
