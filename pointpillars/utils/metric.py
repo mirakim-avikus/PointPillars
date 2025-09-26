@@ -174,7 +174,7 @@ def compute_ap(tp, fp, n_gt):
     for i in range(mpre.size - 1, 0, -1):
         mpre[i-1] = max(mpre[i-1], mpre[i])
     
-    idx = np.where(mrec[1:] != mrec[:-1][0])
+    idx = np.where(mrec[1:] != mrec[:-1])[0]
     ap = float(np.sum((mrec[idx+1] - mrec[idx]) * mpre[idx + 1]))
     return ap
 
@@ -208,10 +208,8 @@ def iou_bev_fn_lidar(P, G):
     P, G: (N,7) [x,y,z,l,w,h,yaw]  (LiDAR 좌표계)
     BEV 투영은 (x,y,l,w,yaw) 사용 (카메라일 때 x,z였던 것과 다름!)
     """
-    P_bev = np.concatenate([P[:, [0, 1]], P[:, [3, 4]], P[:, 6]], axis=-1) 
-    G_bev = np.concatenate([G[:, [0, 1]], G[:, [3, 4]], G[:, 6]], axis=-1)
-    P_t = torch.from_numpy(P_bev).float().cuda()
-    G_t = torch.from_numpy(G_bev).float().cuda()
+    P_t = torch.from_numpy(P).float().cuda()
+    G_t = torch.from_numpy(G).float().cuda()
     iou = boxes_iou_bev_gpu(P_t, G_t)          # (Np, Ng) torch
     return iou.cpu().numpy()
 
@@ -339,9 +337,9 @@ class RunningMetrics:
         """
         for c, v in batch_eval_out.get("ap3d", {}).items():
             self.ap3d[c].append(float(v))
-        for c in batch_eval_out.get("apbev", {}):
+        for c in batch_eval_out.get("apbev", {}).items():
             self.apbev[c].append(float(v))
-        for e in batch_eval_out.get("matched_errors", {}):
+        for e in batch_eval_out.get("matched_errors", []):
             self.ate.append(float(e["ate"]))
             self.aoe_deg.append(float(e["aoe_deg"]))
             self.ase.append(float(e["ase"]))
@@ -352,8 +350,7 @@ class RunningMetrics:
                     a = 0.5, b = 0.3, g = 0.2):
         # per-class average AP
         ap3d_mean = {c: mean_or_zero(self.ap3d[c]) for c in self.cls}
-        has_bev = len(any(v) > 0 for v in self.apbev.values())
-        apbev_mean = {c: (mean_or_zero(self.apbev[c]) if has_bev else 0.0) for c in self.cls}
+        apbev_mean = {c: mean_or_zero(self.apbev[c]) for c in self.cls}
 
         if class_weights is None:
             class_weights = {c: 1.0 for c in self.cls}
@@ -389,4 +386,8 @@ class RunningMetrics:
         }
         return summary
 
+    def reset(self):
+        self.ap3d = defaultdict(list)
+        self.apbev = defaultdict(list)
+        self.ate, self.aoe_deg, self.ase = [], [], []
 

@@ -7,7 +7,7 @@ import cv2
 import yaml
 import numpy as np
 
-from pointpillars.utils import setup_seed, vis_pc, keep_bbox_from_image_range, bbox3d2corners_camera, vis_img_3d, read_calib, keep_bbox_from_lidar_range, read_label, RunningMetrics, evaluate_predictions
+from pointpillars.utils import setup_seed, vis_pc, keep_bbox_from_image_range, bbox3d2corners_camera, vis_img_3d, read_calib, keep_bbox_from_lidar_range, read_label, RunningMetrics, iou3d_fn_lidar, iou_bev_fn_lidar, PRAccumulator
 from pointpillars.dataset import Avikus, get_dataloader
 from pointpillars.model import PointPillars
 from pointpillars.loss import Loss
@@ -110,9 +110,6 @@ def main(args):
                                     batch_size=args.batch_size, 
                                     num_workers=args.num_workers,
                                     shuffle=False)
-
-    CLASSES_LIST = [name for _, name in sorted(CLASSES.items())]
-    metrics = RunningMetrics(class_names=CLASSES_LIST)
 
     num_cls = sorted(CLASSES.values())[-1] + 1
     if not args.no_cuda:
@@ -287,6 +284,9 @@ def main(args):
 
         if epoch % 2 == 0:
             continue
+        CLASS_LIST = [ID2NAME[i] for i in sorted(CLASSES.values())]
+        acc3d = PRAccumulator(CLASS_LIST, ID2NAME, iou3d_fn_lidar, IOU_THRESHOLDS)
+        accbev = PRAccumulator(CLASS_LIST, ID2NAME, iou_bev_fn_lidar, IOU_THRESHOLDS)
 
         pointpillars.eval()
         with torch.no_grad():
@@ -382,7 +382,8 @@ def main(args):
                 img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
 
                 data_root = args.data_root
-                calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
+                calib_info = read_calib(f"{os.path.normpath(data_root)}/{data_key}/calib_{data_key}.txt")
+                calib_dir = os.path.join(*os.path.normpath(data_root).split('/'), data_key)
                 new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
                 old_yaml = os.path.join(calib_dir, "lidar.yaml")
 
@@ -405,76 +406,50 @@ def main(args):
                 gt_labels = np.array([CLASSES.get(item, -1) for item in gt_label['name']])
                 gt_lidar_bboxes = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
 
-                gt_labels = [-1] * len(gt_label['name']) # to distinguish between the ground truth and the predictions
-                
-                per_class_ap3d_dict, per_class_apbev_dict, matched_errs = evaluate_predictions(
-                    lidar_bboxes = lidar_bboxes,
-                    labels = labels,
-                    scores = scores,
-                    gt_lidar_bboxes = gt_lidar_bboxes,
-                    gt_labels = gt_labels,
-                    id2name = ID2NAME,
-                    class_iou_3d_thres = IOU_THRESHOLDS,
-                    class_iou_bev_thres = None
-                )
-
-                batch_eval_out = {
-                    "ap3d": per_class_ap3d_dict, # {"jetski" : 0.6, ...}
-                    "apbev": per_class_apbev_dict,
-                    "matched_errors": matched_errs  # [{"ate": ..., "aoe_deg": ..., "ase": ...}, ...] 
-                }
-                metrics.update_from_batch(batch_eval_out)
-
-                summary = metrics.compute()
-                print(f"[VAL] score = {summary['score']} | mAP3D = {summary['mAP_3D']} | mAPBEV = {summary['mAP_BEV']} | ATE = {summary['ATE']} | AOE_deg = {summary['AOE_deg']} | ASE = {summary['ASE']}")
-                      
-                writer.add_scalar("val/score", summary['score'], epoch)
-                writer.add_scalar("val/mAP_3D", summary['mAP_3D'], epoch)
-                writer.add_scalar("val/mAP_BEV", summary['mAP_BEV'], epoch)
-                writer.add_scalar("val/ATE", summary['ATE'], epoch)
-                writer.add_scalar("val/AOE_deg", summary['AOE_deg'], epoch)
-                writer.add_scalar("val/ASE", summary['ASE'], epoch)
-
-                best_path = os.path.join(saved_ckpt_path, "best.pth")
-                best_score_txt = os.path.join(saved_ckpt_path, "best_score.txt")
-                prev_best = -1.0
-                if os.path.exists(best_score_txt):
-                    with open(best_score_txt, "r") as f:
-                        prev_best = float(f.read().strip() or -1.0)
-                
-                if summary['score'] > prev_best:
-                    torch.save(pointpillars.state_dict(), best_path)
-                    with open(best_score_txt, "w") as f:
-                        f.write(str(summary["score"]))
-                print(f"[VAL] New best! score={summary['score']} -> saved to {best_path}")
-
-                pred_gt_lidar_bboxes = np.concatenate([lidar_bboxes, gt_lidar_bboxes], axis=0)
-                pred_gt_labels = np.concatenate([labels, gt_labels])
+                acc3d.add_frame(lidar_bboxes, scores, labels, gt_lidar_bboxes, gt_labels, collect_errors=True)
+                accbev.add_frame(lidar_bboxes, scores, labels, gt_lidar_bboxes, gt_labels, collect_errors=False)
 
                 if VISUALIZE:
                     vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
                 # pdb.set_trace()
 
-                bboxes2d, camera_bboxes = result_filter['bboxes2d'], result_filter['camera_bboxes'] 
-                bboxes_corners = bbox3d2corners_camera(camera_bboxes)
-
-                points_normalized = bboxes_corners[:, :, :2] / bboxes_corners[:, :, 2:]
-                points_distorted = cv2.fisheye.distortPoints(points_normalized.reshape(-1, 1, 2), K, D)
-                image_points = points_distorted.reshape(bboxes_corners.shape[0], -1, 2)
-
-                img = vis_img_3d(img, image_points, labels, rt=True)
-                os.makedirs('result_imgs', exist_ok=True)
-                cv2.imwrite(f'result_imgs/{data_name}-3d-bbox_{epoch}.png', img)
-
-                global_step = epoch * len(val_dataloader) + val_step + 1
-                if global_step % args.log_freq == 0:
-                    save_summary(writer, loss_dict, global_step, 'val')
-                    # add projected image w/ bbox
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-                    writer.add_image('3D_BBox_Prediction', img_tensor[0], global_step)
-
                 val_step += 1
+
+        per_class_ap3d, matched_errs = acc3d.compute_map()
+        per_class_apbev, _ = accbev.compute_map()
+
+
+        metrics = RunningMetrics(class_names=CLASS_LIST)
+        metrics.update_from_batch({"ap3d" : per_class_ap3d,
+                                    "apbev" : per_class_apbev, 
+                                    "matched_erros" : matched_errs})
+        summary = metrics.compute()
+        print(f"[VAL] score = {summary['score']} | mAP3D = {summary['mAP_3D']} | mAPBEV = {summary['mAP_BEV']} | ATE = {summary['ATE']} | AOE_deg = {summary['AOE_deg']} | ASE = {summary['ASE']}")
+                
+        writer.add_scalar("val/score", summary['score'], epoch)
+        writer.add_scalar("val/mAP_3D", summary['mAP_3D'], epoch)
+        writer.add_scalar("val/mAP_BEV", summary['mAP_BEV'], epoch)
+        writer.add_scalar("val/ATE", summary['ATE'], epoch)
+        writer.add_scalar("val/AOE_deg", summary['AOE_deg'], epoch)
+        writer.add_scalar("val/ASE", summary['ASE'], epoch)
+        writer.add_scalar("val/eval_loss", summary['eval_loss'], epoch)
+
+        best_path = os.path.join(saved_ckpt_path, "best.pth")
+        best_score_txt = os.path.join(saved_ckpt_path, "best_score.txt")
+        prev_best = -1.0
+        if os.path.exists(best_score_txt):
+            with open(best_score_txt, "r") as f:
+                prev_best = float(f.read().strip() or -1.0)
+        
+        if summary['score'] > prev_best:
+            torch.save(pointpillars.state_dict(), best_path)
+            with open(best_score_txt, "w") as f:
+                f.write(str(summary["score"]))
+            print(f"[VAL] New best! score={summary['score']} -> saved to {best_path}")
+        else:
+             print(f"[VAL] score={summary['score']:.4f} (best={prev_best:.4f})")
+    
+        metrics.reset()
         pointpillars.train()
 
 
