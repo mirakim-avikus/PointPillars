@@ -422,7 +422,7 @@ def main(args):
         metrics = RunningMetrics(class_names=CLASS_LIST)
         metrics.update_from_batch({"ap3d" : per_class_ap3d,
                                     "apbev" : per_class_apbev, 
-                                    "matched_erros" : matched_errs})
+                                    "matched_errors" : matched_errs})
         summary = metrics.compute()
         print(f"[VAL] score = {summary['score']} | mAP3D = {summary['mAP_3D']} | mAPBEV = {summary['mAP_BEV']} | ATE = {summary['ATE']} | AOE_deg = {summary['AOE_deg']} | ASE = {summary['ASE']}")
                 
