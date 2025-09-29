@@ -337,7 +337,7 @@ class RunningMetrics:
         """
         for c, v in batch_eval_out.get("ap3d", {}).items():
             self.ap3d[c].append(float(v))
-        for c in batch_eval_out.get("apbev", {}).items():
+        for c, v in batch_eval_out.get("apbev", {}).items():
             self.apbev[c].append(float(v))
         for e in batch_eval_out.get("matched_errors", []):
             self.ate.append(float(e["ate"]))
