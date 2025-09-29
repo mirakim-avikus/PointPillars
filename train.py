@@ -264,8 +264,7 @@ def main(args):
                                   num_cls_pos=num_cls_pos, 
                                   batched_bbox_reg=batched_bbox_reg, 
                                   batched_dir_labels=batched_dir_labels)
-            for k, v in loss_dict.items():
-                print(f'train loss {k} : {v}')
+            print(' | '.join(f'train loss {k}: {v:.4f}' for k, v in loss_dict.items()))
             loss = loss_dict['total_loss']
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(pointpillars.parameters(), max_norm=35)
@@ -414,6 +413,10 @@ def main(args):
                 # pdb.set_trace()
 
                 val_step += 1
+
+                print('GT count:', sum(acc3d.n_gt.values()))
+                print('Pred scored count:', sum(len(v) for v in acc3d.scores.values()))
+                print('matched_errs so far:', len(acc3d.errs))
 
         per_class_ap3d, matched_errs = acc3d.compute_map()
         per_class_apbev, _ = accbev.compute_map()
