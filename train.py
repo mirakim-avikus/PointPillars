@@ -289,7 +289,7 @@ def main(args):
 
         pointpillars.eval()
         with torch.no_grad():
-            for i, data_dict in enumerate(tqdm(val_dataloader)):
+            for _, data_dict in enumerate(tqdm(val_dataloader)):
                 if not args.no_cuda:
                     # move the tensors to the cuda
                     for key in data_dict:
@@ -300,117 +300,50 @@ def main(args):
                 batched_pts = data_dict['batched_pts']
                 batched_gt_bboxes = data_dict['batched_gt_bboxes']
                 batched_labels = data_dict['batched_labels']
-                batched_difficulty = data_dict['batched_difficulty']
 
-                orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, anchor_target_dict = \
-                    pointpillars(batched_pts=batched_pts, 
-                                mode='train',
+                results = pointpillars(batched_pts=batched_pts, 
                                 batched_gt_bboxes=batched_gt_bboxes, 
                                 batched_gt_labels=batched_labels)
 
-                device = orig_bbox_cls_pred.device
-                feature_map_size = torch.tensor(list(orig_bbox_cls_pred.size()[-2:]), device=device)
-                anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
-                batch_size = len(batched_pts)
-                batched_anchors = [anchors for _ in range(batch_size)]
-                result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
-                data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
-
-                if result_filter == None:
-                    print(f'prediction is invalid in {data_name}.png')
-                    continue
-
-                bbox_cls_pred = orig_bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
-                bbox_pred = orig_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
-                bbox_dir_cls_pred = orig_bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
-
-                batched_bbox_labels = anchor_target_dict['batched_labels'].reshape(-1)
-                batched_label_weights = anchor_target_dict['batched_label_weights'].reshape(-1)
-                batched_bbox_reg = anchor_target_dict['batched_bbox_reg'].reshape(-1, 7)
-                # batched_bbox_reg_weights = anchor_target_dict['batched_bbox_reg_weights'].reshape(-1)
-                batched_dir_labels = anchor_target_dict['batched_dir_labels'].reshape(-1)
-                # batched_dir_labels_weights = anchor_target_dict['batched_dir_labels_weights'].reshape(-1)
-                
-                pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
-                bbox_pred = bbox_pred[pos_idx]
-                bbox_pred_vis = bbox_pred.detach().clone()
-                batched_bbox_reg = batched_bbox_reg[pos_idx]
-                # sin(a - b) = sin(a)*cos(b) - cos(a)*sin(b)
-                bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1].clone()) * torch.cos(batched_bbox_reg[:, -1].clone())
-                batched_bbox_reg[:, -1] = torch.cos(bbox_pred[:, -1].clone()) * torch.sin(batched_bbox_reg[:, -1].clone())
-                bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
-                batched_dir_labels = batched_dir_labels[pos_idx]
-
-                num_cls_pos = (batched_bbox_labels < num_cls).sum()
-                bbox_cls_pred = bbox_cls_pred[batched_label_weights > 0]
-                batched_bbox_labels[batched_bbox_labels < 0] = num_cls
-                batched_bbox_labels = batched_bbox_labels[batched_label_weights > 0]
-
-                loss_dict = loss_func(bbox_cls_pred=bbox_cls_pred,
-                                    bbox_pred=bbox_pred,
-                                    bbox_dir_cls_pred=bbox_dir_cls_pred,
-                                    batched_labels=batched_bbox_labels, 
-                                    num_cls_pos=num_cls_pos, 
-                                    batched_bbox_reg=batched_bbox_reg, 
-                                    batched_dir_labels=batched_dir_labels)
-
-                for k, v in loss_dict.items():
-                    print(f'eval loss {k} : {v}')
-                # visualize image
-                if VISUALIZE:
-                    vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
+                batch_size = len(results)
+                for i in range(batch_size):
+                    data_name = os.path.normpath(data_dict['batched_img_info'][i]['image_path'])
+                    if results[i] == None:
+                        print(f'prediction is invalid in {data_name}')
+                        continue
 
                 # visualize image
-                device = orig_bbox_cls_pred.device
-                feature_map_size = torch.tensor(list(orig_bbox_cls_pred.size()[-2:]), device=device)
-                anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
-                batch_size = len(batched_pts)
-                batched_anchors = [anchors for _ in range(batch_size)]
-                result_filter = pointpillars.get_predicted_bboxes(orig_bbox_cls_pred, orig_bbox_pred, orig_bbox_dir_cls_pred, batched_anchors)[0]
-                data_key = os.path.normpath(data_dict['batched_img_info'][0]['image_path']).split('/')[0]
-                data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
+                for i in range(batch_size):
+                    data_key = os.path.normpath(data_dict['batched_img_info'][i]['image_path']).split('/')[0]
+                    data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
 
-                if result_filter == None:
-                    print(f'prediction is invalid in {data_name}.png')
-                    continue
-                lidar_dir = os.path.join(args.data_root, data_key, 'sample')
-                lidar_name = find_closest_lidar(lidar_dir, data_name)
-                gt_path = os.path.join(args.data_root, data_key, 'output', data_key, "label", f'{lidar_name}.txt')
-                calib_path = os.path.join(args.data_root, data_key, f'calib_{data_key}.txt')
-                parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
+                    parent_path = os.path.dirname(os.path.normpath(args.data_root))
+                    img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
 
-                data_root = args.data_root
-                calib_info = read_calib(f"{os.path.normpath(data_root)}/{data_key}/calib_{data_key}.txt")
-                calib_dir = os.path.join(*os.path.normpath(data_root).split('/'), data_key)
-                new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
-                old_yaml = os.path.join(calib_dir, "lidar.yaml")
+                    data_root = args.data_root
+                    calib_info = read_calib(f"{os.path.normpath(data_root)}/{data_key}/calib_{data_key}.txt")
+                    calib_dir = os.path.join(*os.path.normpath(data_root).split('/'), data_key)
+                    new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
+                    old_yaml = os.path.join(calib_dir, "lidar.yaml")
 
-                # TODO: temporary fix — replace with permanent calibration loader
-                calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
-                gt_label = read_label(gt_path)
-                tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
+                    # TODO: temporary fix — replace with permanent calibration loader
+                    calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
+                    tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
-                img = cv2.imread(img_path, 1)
-                image_shape = img.shape[:2]
+                    img = cv2.imread(img_path, 1)
+                    image_shape = img.shape[:2]
 
-                result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
-                result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
-                lidar_bboxes = result_filter['lidar_bboxes']
-                labels, scores = result_filter['labels'], result_filter['scores']
+                    res_filter = keep_bbox_from_image_range(results[i], tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
+                    res_filter = keep_bbox_from_lidar_range(res_filter, pcd_limit_range)
+                    lidar_bboxes = res_filter['lidar_bboxes']
+                    labels, scores = res_filter['labels'], res_filter['scores']
 
-                dimensions = gt_label['dimensions']
-                location = gt_label['location']
-                rotation_y = gt_label['rotation_y']
-                gt_labels = np.array([CLASSES.get(item, -1) for item in gt_label['name']])
-                gt_lidar_bboxes = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
+                    if VISUALIZE:
+                        vis_pc(batched_pts[i].cpu().numpy(), bboxes=batched_gt_bboxes[i].cpu().numpy(), labels=batched_labels[i].cpu().numpy())
+                        vis_pc(batched_pts[i].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
 
-                acc3d.add_frame(lidar_bboxes, scores, labels, gt_lidar_bboxes, gt_labels, collect_errors=True)
-                accbev.add_frame(lidar_bboxes, scores, labels, gt_lidar_bboxes, gt_labels, collect_errors=False)
-
-                if VISUALIZE:
-                    vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
-                # pdb.set_trace()
+                    acc3d.add_frame(lidar_bboxes, scores, labels, batched_gt_bboxes[i].cpu().numpy(), batched_labels[i].cpu().numpy(), collect_errors=True)
+                    accbev.add_frame(lidar_bboxes, scores, labels, batched_gt_bboxes[i].cpu().numpy(), batched_labels[i].cpu().numpy(), collect_errors=False)
 
                 val_step += 1
 
