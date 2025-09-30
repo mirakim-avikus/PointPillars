@@ -130,12 +130,12 @@ def boxes_iou3d_gpu(boxes_a, boxes_b):
     vol_a = (A[:, 3] * A[:, 4] * A[:, 5]).astype(np.float32)  # l*w*h
     vol_b = (B[:, 3] * B[:, 4] * B[:, 5]).astype(np.float32)
 
-    # z-interval: [z - h/2, z + h/2]  (LiDAR에서 z가 수직축)
-    zmin_a = A[:, 2] - A[:, 5] * 0.5
-    zmax_a = A[:, 2] + A[:, 5] * 0.5
+    # z-interval: [z, z + h]  (LiDAR에서 z가 수직축)
+    zmin_a = A[:, 2]
+    zmax_a = A[:, 2] + A[:, 5]
 
-    zmin_b = B[:, 2] - B[:, 5] * 0.5
-    zmax_b = B[:, 2] + B[:, 5] * 0.5
+    zmin_b = B[:, 2]
+    zmax_b = B[:, 2] + B[:, 5]
 
     for i in range(N):
         for j in range(M):
