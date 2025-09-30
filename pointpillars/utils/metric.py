@@ -18,29 +18,16 @@ def _rect_corners_xy(x, y, l, w, yaw):
     R = np.array([[c, -s], [s, c]], dtype=np.float32)
     return (pts @ R.T) + np.array([x, y], dtype=np.float32)
 
-def _poly_area(poly):
-    """Shoelace formula; poly shape (K,2). If K<3, area=0."""
+def ensure_ccw(poly):
+    return poly if signed_area(poly) > 0 else poly[::-1].copy()
+
+def signed_area(poly):
     if poly is None or len(poly) < 3:
         return 0.0
-    x = poly[:, 0]; y = poly[:, 1]
-    return 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+    x, y = poly[:,0], poly[:,1]
+    return 0.5 * (x @ np.roll(y, -1) - y @ np.roll(x, -1))
 
-def _line_intersect(p1, p2, q1, q2):
-    """Line p1->p2 with q1->q2; return intersection point or None."""
-    x1, y1 = p1; x2, y2 = p2; x3, y3 = q1; x4, y4 = q2
-    den = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
-    if abs(den) < 1e-9:
-        return None
-    px = ((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4)) / den
-    py = ((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4)) / den
-    return np.array([px, py], dtype=np.float32)
-
-def _is_inside(p, a, b):
-    """Check if point p is to the left of edge a->b (keeping polygon CCW)."""
-    return (b[0]-a[0])*(p[1]-a[1]) - (b[1]-a[1])*(p[0]-a[0]) >= -1e-9
-
-def _sutherland_hodgman(subject, clipper):
-    """Convex polygon clipping: returns intersection polygon vertices (K,2)."""
+def sutherland_hodgman(subject, clipper):
     if subject is None or len(subject) == 0:
         return None
     output = subject
@@ -52,32 +39,59 @@ def _sutherland_hodgman(subject, clipper):
         A = clipper[i]
         B = clipper[(i+1) % len(clipper)]
         S = input_list[-1]
-        for E in input_list:
-            if _is_inside(E, A, B):
-                if not _is_inside(S, A, B):
-                    I = _line_intersect(S, E, A, B)
-                    if I is not None:
-                        output.append(I)
-                output.append(E)
-            elif _is_inside(S, A, B):
-                I = _line_intersect(S, E, A, B)
-                if I is not None:
-                    output.append(I)
-            S = E
-        output = np.array(output, dtype=np.float32) if len(output) > 0 else None
+
+        def inside(P):
+            # 왼쪽이면 inside (clipper가 CCW라는 가정하)
+            return np.cross(B - A, P - A) >= 0
+
+        def intersection(P, S):
+            # 선분 AS, AB의 교점
+            dPS = S - P
+            dAB = B - A
+            denom = np.cross(dPS, dAB)
+            if np.isclose(denom, 0.0):
+                return S  # 평행/겹침: 끝점 반환 (수치적 완화)
+            t = np.cross(A - P, dAB) / denom
+            return P + t * dPS
+
+        for P in input_list:
+            if inside(P):
+                if not inside(S):
+                    output.append(intersection(P, S))
+                output.append(P)
+            elif inside(S):
+                output.append(intersection(P, S))
+            S = P
+        output = np.asarray(output, dtype=float)
     return output
 
+def polygon_area(poly):
+    return abs(signed_area(poly))
+
+def iou_from_rect_polys(pa, pb, eps=1e-12):
+    A = ensure_ccw(np.asarray(pa, dtype=float))
+    B = ensure_ccw(np.asarray(pb, dtype=float))
+    inter_poly = sutherland_hodgman(A, B)
+    inter_area = polygon_area(inter_poly) if inter_poly is not None and len(inter_poly) >= 3 else 0.0
+    area_a = polygon_area(A)
+    area_b = polygon_area(B)
+    union = area_a + area_b - inter_area
+    return inter_area / max(union, eps)
+
 def _inter_area_bev(a, b):
-    """Intersection area between two rotated rectangles in XY-plane.
-       a,b: (5,) as [x,y,l,w,yaw] or (7,) [x,y,z,l,w,h,yaw] (z,h ignored).
-    """
+    """Return *intersection area* between two rotated rectangles in XY-plane."""
     ax, ay, al, aw, ayaw = float(a[0]), float(a[1]), float(a[3]), float(a[4]), float(a[-1])
     bx, by, bl, bw, byaw = float(b[0]), float(b[1]), float(b[3]), float(b[4]), float(b[-1])
 
     pa = _rect_corners_xy(ax, ay, al, aw, ayaw)
     pb = _rect_corners_xy(bx, by, bl, bw, byaw)
-    inter_poly = _sutherland_hodgman(pa, pb)
-    return _poly_area(inter_poly)
+
+    # 교집합 폴리곤
+    A = ensure_ccw(pa)
+    B = ensure_ccw(pb)
+    inter_poly = sutherland_hodgman(A, B)
+    inter_area = polygon_area(inter_poly) if inter_poly is not None and len(inter_poly) >= 3 else 0.0
+    return float(inter_area)
 
 # -------------------------------
 # BEV IoU (LiDAR): [x,y,z,l,w,h,yaw]
