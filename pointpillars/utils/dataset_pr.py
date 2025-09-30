@@ -12,6 +12,24 @@ class PRAccumulator:
         self.tp = {c: [] for c in self.cls}
         self.n_gt = {c: 0 for c in self.cls}
         self.errs = []
+
+        # validation metric sanity check
+        def _mk(x=0,y=0,l=4,w=2,yaw=0):  # 편의
+            return np.array([x,y,0,l,w,1, yaw], dtype=float)
+
+        # 1) 완전 동일 → IoU=1
+        A = _mk(0,0,4,2,0.3); B = _mk(0,0,4,2,0.3)
+        assert np.allclose(self.iou_fn(np.array([A]), np.array([B]))[0,0], 1.0, atol=1e-6)
+
+        # 2) 완전 분리 → IoU=0
+        A = _mk(0,0,4,2,0.0); B = _mk(10,0,4,2,0.0)
+        assert np.allclose(self.iou_fn(np.array([A]), np.array([B]))[0,0], 0.0, atol=1e-6)
+
+        # 3) 일부 겹침(수동 체크)
+        A = _mk(0,0,4,2,0.0); B = _mk(2,0,4,2,0.0)  # 절반 정도 겹침 → IoU≈0.3333
+        iou = self.iou_fn(np.array([A]), np.array([B]))[0,0]
+        assert abs(iou - (1/3)) < 1e-6  # = 1/3
+        print(f'function {iou_fn.__name__} Sanicy Checked!')
     
     def add_frame(self, pred_boxes, pred_scores, pred_labels, 
                             gt_boxes, gt_labels, collect_errors = False):
