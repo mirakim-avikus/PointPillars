@@ -272,7 +272,7 @@ class PointPillars(nn.Module):
 
         # val and test
         self.nms_pre = 100
-        self.nms_thr = 0.01
+        self.nms_thr = 0.1
         self.score_thr = 0.1
         self.max_num = 50
 
