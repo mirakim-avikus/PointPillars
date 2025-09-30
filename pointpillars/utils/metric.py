@@ -68,16 +68,6 @@ def sutherland_hodgman(subject, clipper):
 def polygon_area(poly):
     return abs(signed_area(poly))
 
-def iou_from_rect_polys(pa, pb, eps=1e-12):
-    A = ensure_ccw(np.asarray(pa, dtype=float))
-    B = ensure_ccw(np.asarray(pb, dtype=float))
-    inter_poly = sutherland_hodgman(A, B)
-    inter_area = polygon_area(inter_poly) if inter_poly is not None and len(inter_poly) >= 3 else 0.0
-    area_a = polygon_area(A)
-    area_b = polygon_area(B)
-    union = area_a + area_b - inter_area
-    return inter_area / max(union, eps)
-
 def _inter_area_bev(a, b):
     """Return *intersection area* between two rotated rectangles in XY-plane."""
     ax, ay, al, aw, ayaw = float(a[0]), float(a[1]), float(a[3]), float(a[4]), float(a[-1])
