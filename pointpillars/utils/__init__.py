@@ -7,5 +7,5 @@ from .process import bbox_camera2lidar, bbox3d2bevcorners, box_collision_test, \
     get_points_num_in_bbox, iou2d_nearest, iou2d, iou3d, iou3d_camera, iou_bev, \
     bbox3d2corners_camera, points_camera2image, bbox_avikus2lidar, bbox_lidar2camera
 from .vis_o3d import vis_pc, vis_img_3d
-from .metric import RunningMetrics, evaluate_predictions, iou3d_fn_lidar, iou_bev_fn_lidar
+from .metric import RunningMetrics, iou3d_fn_lidar, iou_bev_fn_lidar
 from .dataset_pr import PRAccumulator

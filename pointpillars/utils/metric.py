@@ -277,39 +277,6 @@ def eval_per_class(pred_bboxes, pred_scores, pred_labels,
         apbev = compute_ap(tp, fp, len(G))
     return ap3d, apbev, matched_errs
 
-def evaluate_predictions(lidar_bboxes, labels, scores,
-                            gt_lidar_bboxes, gt_labels,
-                                id2name, class_iou_3d_thres, class_iou_bev_thres = None,
-                                iou3d_fn = None, iou_bev_fn = None):
-    """
-    bboxes / gt_bboxes : (N, 7)
-    labels / gt_labesl : (N, )
-    id2name : {id:int -> name:str}
-    """
-    pred_names = np.array([id2name[int(i)] for i in labels], dtype=object)
-    gt_names = np.array([id2name[int(i)] for i in gt_labels], dtype=object)
-
-    class_list = sorted(set(list(pred_names) + list(gt_names)))
-    per_class_ap3d = {}
-    per_class_apbev = {} if class_iou_bev_thres is not None else None
-    matched_errs_all = []
-
-    for cname in class_list:
-        thr3d = class_iou_3d_thres.get(cname, 0.5)
-        thrbev = None if class_iou_bev_thres is None else class_iou_bev_thres.get(cname, 0.5)
-
-        ap3d, apbev, errs = eval_per_class(
-            pred_bboxes=lidar_bboxes, pred_scores=scores, pred_labels=pred_names,
-            gt_bboxes=gt_lidar_bboxes, gt_labels=gt_names,
-            class_name=cname, iou_thres_3d=thr3d, iou_thres_bev=thrbev,
-            iou3d_fn = iou3d_fn_lidar, iou_bev_fn=iou_bev_fn_lidar
-        )
-        per_class_ap3d[cname] = ap3d
-        if per_class_apbev is not None:
-            per_class_apbev[cname] = apbev
-        matched_errs_all.extend(errs)
-    return per_class_ap3d, per_class_apbev, matched_errs_all
-
 def mean_or_zero(xs):
     xs = [x for x in xs if x is not None and not math.isnan(x)]
     return float(np.mean(xs)) if xs else 0.0
