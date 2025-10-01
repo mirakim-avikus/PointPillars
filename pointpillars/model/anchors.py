@@ -151,12 +151,28 @@ def anchor_target(batched_anchors, batched_gt_bboxes, batched_gt_labels, assigne
             pos_iou_thr, neg_iou_thr, min_iou_thr = \
             assigner['pos_iou_thr'], assigner['neg_iou_thr'], assigner['min_iou_thr']
             cur_anchors = anchors[:, :, j, :, :].reshape(-1, 7)
+            if gt_bboxes.numel() == 0: # when no GT bbox
+                # 1. all anchors must be negative
+                assigned_gt_labels = torch.zeros_like(cur_anchors[:, 0], dtype=torch.long) + nclasses   # negative로
+                assigned_gt_labels_weights = torch.ones_like(cur_anchors[:, 0])
+
+                # 2. regression/direction weight = 0
+                assigned_gt_reg = torch.zeros_like(cur_anchors)
+                assigned_gt_reg_weights = torch.zeros_like(cur_anchors[:, 0])
+
+                assigned_gt_dir = torch.zeros_like(cur_anchors[:, 0], dtype=torch.long)
+                assigned_gt_dir_weights = torch.zeros_like(cur_anchors[:, 0])
+
+                multi_labels.append(assigned_gt_labels.reshape(d1, d2, 1, d4))
+                multi_label_weights.append(assigned_gt_labels_weights.reshape(d1, d2, 1, d4))
+                multi_bbox_reg.append(assigned_gt_reg.reshape(d1, d2, 1, d4, -1))
+                multi_bbox_reg_weights.append(assigned_gt_reg_weights.reshape(d1, d2, 1, d4))
+                multi_dir_labels.append(assigned_gt_dir.reshape(d1, d2, 1, d4))
+                multi_dir_labels_weights.append(assigned_gt_dir_weights.reshape(d1, d2, 1, d4))
+                continue
+
             overlaps = iou2d_nearest(gt_bboxes, cur_anchors) 
-            try:
-                max_overlaps, max_overlaps_idx = torch.max(overlaps, dim=0)
-            except:
-                import pdb 
-                pdb.set_trace
+            max_overlaps, max_overlaps_idx = torch.max(overlaps, dim=0)
             gt_max_overlaps, _ = torch.max(overlaps, dim=1)
 
             assigned_gt_inds = -torch.ones_like(cur_anchors[:, 0], dtype=torch.long)

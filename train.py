@@ -187,20 +187,8 @@ def main(args):
 
             batched_pts = data_dict['batched_pts']
             batched_gt_bboxes = data_dict['batched_gt_bboxes']
-            if len(batched_gt_bboxes[0]) == 0:
-                print(f"data {data_dict['batched_img_info'][0]['image_path']} has no GT!")
-                continue
             batched_labels = data_dict['batched_labels']
-            batched_difficulty = data_dict['batched_difficulty']
 
-            for box in batched_gt_bboxes:
-                if len(box) == 0:
-                    print(f'batched gt bboxes : 0!')
-                    pdb.set_trace()
-
-            # visualize GT bbox
-            if VISUALIZE:
-                vis_pc(batched_pts[0].cpu().numpy(), bboxes=batched_gt_bboxes[0].cpu().numpy(), labels=batched_labels[0].cpu().numpy())
             bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
                 pointpillars(batched_pts=batched_pts, 
                              mode='train',
