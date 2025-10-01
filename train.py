@@ -246,17 +246,11 @@ def main(args):
             batched_bbox_labels = anchor_target_dict['batched_labels'].reshape(-1)
             batched_label_weights = anchor_target_dict['batched_label_weights'].reshape(-1)
             batched_bbox_reg = anchor_target_dict['batched_bbox_reg'].reshape(-1, 7)
-            # batched_bbox_reg_weights = anchor_target_dict['batched_bbox_reg_weights'].reshape(-1)
             batched_dir_labels = anchor_target_dict['batched_dir_labels'].reshape(-1)
-            # batched_dir_labels_weights = anchor_target_dict['batched_dir_labels_weights'].reshape(-1)
             
             pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
             bbox_pred = bbox_pred[pos_idx]
-            bbox_pred_vis = bbox_pred.detach().clone()
             batched_bbox_reg = batched_bbox_reg[pos_idx]
-            # sin(a - b) = sin(a)*cos(b) - cos(a)*sin(b)
-            bbox_pred[:, -1] = torch.sin(bbox_pred[:, -1].clone()) * torch.cos(batched_bbox_reg[:, -1].clone())
-            batched_bbox_reg[:, -1] = torch.cos(bbox_pred[:, -1].clone()) * torch.sin(batched_bbox_reg[:, -1].clone())
             bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
             batched_dir_labels = batched_dir_labels[pos_idx]
 

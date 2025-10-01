@@ -54,8 +54,11 @@ class Loss(nn.Module):
         
         # 2. regression loss
         if bbox_pred.size(0) > 0:
-            reg_loss = self.smooth_l1_loss(bbox_pred, batched_bbox_reg)
-            reg_loss = reg_loss.sum() / reg_loss.size(0)
+            reg_loss = self.smooth_l1_loss(bbox_pred[:, :-1], batched_bbox_reg[:, :-1]).sum() / bbox_pred.size(0)
+            A = bbox_pred[:, -1]
+            B = batched_bbox_reg[:, -1]
+            sin_diff = torch.sin(A) * torch.cos(B) - torch.cos(A) * torch.sin(B)
+            reg_loss += self.smooth_l1_loss(sin_diff, torch.zeros_like(sin_diff)).sum() / sin_diff.size(0)
         else:
             print("[Warning] No bbox regression targets → reg_loss = 0")
             reg_loss = torch.tensor(0.0, device=bbox_pred.device, requires_grad = True)
