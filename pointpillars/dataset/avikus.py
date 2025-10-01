@@ -10,7 +10,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(BASE))
 
 from pointpillars.utils import read_pickle, read_points, bbox_camera2lidar, bbox_avikus2lidar
-from pointpillars.dataset import point_range_filter, data_augment
+from pointpillars.dataset import point_range_filter, object_range_filter, data_augment
 
 class BaseSampler():
     def __init__(self, sampled_list, shuffle=True):
@@ -149,6 +149,7 @@ class Avikus(Dataset):
             data_dict = data_augment(self.CLASSES, self.data_root, data_dict, self.data_aug_config)
         else:
             data_dict = point_range_filter(data_dict, point_range=self.data_aug_config['point_range_filter'])
+            data_dict = object_range_filter(data_dict, object_range=self.data_aug_config['object_range_filter'])
 
         return data_dict
 
