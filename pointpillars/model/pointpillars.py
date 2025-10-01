@@ -27,7 +27,10 @@ class PillarLayer(nn.Module):
         '''
         pillars, coors, npoints_per_pillar = [], [], []
         for i, pts in enumerate(batched_pts):
-            voxels_out, coors_out, num_points_per_voxel_out = self.voxel_layer(pts) 
+            if pts.shape[0] == 0:
+                continue
+            else:
+                voxels_out, coors_out, num_points_per_voxel_out = self.voxel_layer(pts) 
             # voxels_out: (max_voxel, num_points, c), coors_out: (max_voxel, 3)
             # num_points_per_voxel_out: (max_voxel, )
             pillars.append(voxels_out)
@@ -57,7 +60,7 @@ class PillarEncoder(nn.Module):
         self.conv = nn.Conv1d(in_channel, out_channel, 1, bias=False)
         self.bn = nn.BatchNorm1d(out_channel, eps=1e-3, momentum=0.01)
 
-    def forward(self, pillars, coors_batch, npoints_per_pillar):
+    def forward(self, bs, pillars, coors_batch, npoints_per_pillar):
         '''
         pillars: (p1 + p2 + ... + pb, num_points, c), c = 4
         coors_batch: (p1 + p2 + ... + pb, 1 + 3)
@@ -93,14 +96,14 @@ class PillarEncoder(nn.Module):
 
         # 6. pillar scatter
         batched_canvas = []
-        bs = coors_batch[-1, 0] + 1
         for i in range(bs):
             cur_coors_idx = coors_batch[:, 0] == i
             cur_coors = coors_batch[cur_coors_idx, :]
             cur_features = pooling_features[cur_coors_idx]
 
             canvas = torch.zeros((self.x_l, self.y_l, self.out_channel), dtype=torch.float32, device=device)
-            canvas[cur_coors[:, 1], cur_coors[:, 2]] = cur_features
+            if sum(cur_coors_idx) > 0:
+                canvas[cur_coors[:, 1], cur_coors[:, 2]] = cur_features
             canvas = canvas.permute(2, 1, 0).contiguous()
             batched_canvas.append(canvas)
         batched_canvas = torch.stack(batched_canvas, dim=0) # (bs, in_channel, self.y_l, self.x_l)
@@ -394,7 +397,7 @@ class PointPillars(nn.Module):
         # coors_batch: (p1 + p2 + ... + pb, 1 + 3)
         # npoints_per_pillar: (p1 + p2 + ... + pb, )
         #                     -> pillar_features: (bs, out_channel, y_l, x_l)
-        pillar_features = self.pillar_encoder(pillars, coors_batch, npoints_per_pillar)
+        pillar_features = self.pillar_encoder(batch_size, pillars, coors_batch, npoints_per_pillar)
 
         # xs:  [(bs, 64, 248, 216), (bs, 128, 124, 108), (bs, 256, 62, 54)]
         xs = self.backbone(pillar_features)
