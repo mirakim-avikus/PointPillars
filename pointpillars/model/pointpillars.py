@@ -259,9 +259,9 @@ class PointPillars(nn.Module):
         
         # anchors
         ranges = [point_cloud_range for _ in range(nclasses)]
-        sizes = [[0.7, 0.6, 1.2], [1.0, 2.0, 1.0], [4.0, 12.0, 5.0],            # label[l, w, h] -> anchor_size[w, l, h]
+        sizes = [[1.0, 2.0, 1.0], [4.0, 12.0, 5.0], # label[l, w, h] -> anchor_size[w, l, h]
                  [8.0, 22.0, 10.0], [1.5, 1.0, 2.5], [4.0, 11.0, 14.0],
-                 [0.5, 0.5, 4.0], [3.0, 1.5, 1.0]]
+                 [0.5, 0.5, 4.0], [3.0, 1.5, 1.0]]  # human : [0.7, 0.6, 1.2], 
 
         rotations=[0, 1.57]
         self.anchors_generator = Anchors(ranges=ranges, 
@@ -279,7 +279,7 @@ class PointPillars(nn.Module):
         self.score_thr = 0.1
         self.max_num = 50
 
-    def get_predicted_bboxes_single(self, bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchors):
+    def get_predicted_bboxes_single(self, bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchors, mode):
         '''
         bbox_cls_pred: (n_anchors*3, 248, 216) 
         bbox_pred: (n_anchors*7, 248, 216)
@@ -320,9 +320,13 @@ class PointPillars(nn.Module):
         for i in range(self.nclasses):
             # 3.1 filter bboxes with scores below self.score_thr
             cur_bbox_cls_pred = bbox_cls_pred[:, i]
-            score_inds = cur_bbox_cls_pred > self.score_thr
-            if score_inds.sum() == 0:
-                continue
+            if mode == 'train':
+                score_inds = cur_bbox_cls_pred > self.score_thr
+                if score_inds.sum() == 0:
+                    print(f'every prediction is under {self.score_thr}!')
+                    continue
+            else:
+                score_inds = cur_bbox_cls_pred >= 0
 
             cur_bbox_cls_pred = cur_bbox_cls_pred[score_inds]
             cur_bbox_pred2d = bbox_pred2d[score_inds]
@@ -348,24 +352,29 @@ class PointPillars(nn.Module):
 
         # 4. filter some bboxes if bboxes number is above self.max_num
         if len(ret_bboxes) == 0:
-            return None
-        ret_bboxes = torch.cat(ret_bboxes, 0)
-        ret_labels = torch.cat(ret_labels, 0)
-        ret_scores = torch.cat(ret_scores, 0)
-        if ret_bboxes.size(0) > self.max_num:
-            final_inds = ret_scores.topk(self.max_num)[1]
-            ret_bboxes = ret_bboxes[final_inds]
-            ret_labels = ret_labels[final_inds]
-            ret_scores = ret_scores[final_inds]
-        result = {
-            'lidar_bboxes': ret_bboxes.detach().cpu().numpy(),
-            'labels': ret_labels.detach().cpu().numpy(),
-            'scores': ret_scores.detach().cpu().numpy()
-        }
+            result = {
+                'lidar_bboxes': np.array([]),
+                'labels': np.array([]),
+                'scores': np.array([])
+            }
+        else:
+            ret_bboxes = torch.cat(ret_bboxes, 0)
+            ret_labels = torch.cat(ret_labels, 0)
+            ret_scores = torch.cat(ret_scores, 0)
+            if ret_bboxes.size(0) > self.max_num:
+                final_inds = ret_scores.topk(self.max_num)[1]
+                ret_bboxes = ret_bboxes[final_inds]
+                ret_labels = ret_labels[final_inds]
+                ret_scores = ret_scores[final_inds]
+            result = {
+                'lidar_bboxes': ret_bboxes.detach().cpu().numpy(),
+                'labels': ret_labels.detach().cpu().numpy(),
+                'scores': ret_scores.detach().cpu().numpy()
+            }
         return result
 
 
-    def get_predicted_bboxes(self, bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors):
+    def get_predicted_bboxes(self, bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors, mode):
         '''
         bbox_cls_pred: (bs, n_anchors*3, 248, 216) 
         bbox_pred: (bs, n_anchors*7, 248, 216)
@@ -382,7 +391,8 @@ class PointPillars(nn.Module):
             result = self.get_predicted_bboxes_single(bbox_cls_pred=bbox_cls_pred[i],
                                                       bbox_pred=bbox_pred[i], 
                                                       bbox_dir_cls_pred=bbox_dir_cls_pred[i], 
-                                                      anchors=batched_anchors[i])
+                                                      anchors=batched_anchors[i],
+                                                      mode=mode)
             results.append(result)
         return results
 
@@ -428,14 +438,16 @@ class PointPillars(nn.Module):
             results = self.get_predicted_bboxes(bbox_cls_pred=bbox_cls_pred, 
                                                 bbox_pred=bbox_pred, 
                                                 bbox_dir_cls_pred=bbox_dir_cls_pred, 
-                                                batched_anchors=batched_anchors)
+                                                batched_anchors=batched_anchors,
+                                                mode=mode)
             return results
 
         elif mode == 'test':
             results = self.get_predicted_bboxes(bbox_cls_pred=bbox_cls_pred, 
                                                 bbox_pred=bbox_pred, 
                                                 bbox_dir_cls_pred=bbox_dir_cls_pred, 
-                                                batched_anchors=batched_anchors)
+                                                batched_anchors=batched_anchors,
+                                                mode=mode)
             return results
         else:
             raise ValueError   

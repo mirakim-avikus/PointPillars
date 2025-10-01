@@ -37,14 +37,13 @@ class BaseSampler():
 class Avikus(Dataset):
 
     CLASSES = {
-        # 'human': 0,
-        'jetski': 1,
-        'smallboat': 2,
-        'mediumboat': 3,
-        'c-marker': 4,
-        'yacht': 5,
-        'pole': 6,
-        'dinghyboat': 7
+        'jetski': 0,
+        'smallboat': 1,
+        'mediumboat': 2,
+        'c-marker': 3,
+        'yacht': 4,
+        'pole': 5,
+        'dinghyboat': 6
         }
 
     # TODO : check IoU in 2D image detection domain 

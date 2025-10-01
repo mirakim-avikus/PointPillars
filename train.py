@@ -202,9 +202,10 @@ def main(args):
             batched_anchors = [anchors for _ in range(batch_size)]
             result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors)[0]
 
-            if result_filter == None:
-                print(f'prediction is invalid in {data_name}.png')
-                continue
+                if result_filter[i]['lidar_bboxes'].shape[0] == 0:
+                    data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
+                    print(f'prediction above score threshold is empty in {data_name}.png')
+                    continue
 
             calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
             calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
