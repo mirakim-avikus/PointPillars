@@ -101,7 +101,7 @@ def get_parameters(calib_path_yaml, calib_info):
 def main(args):
     setup_seed()
 
-    point_cloud_range=[4, -144., -10., 180., 144., 30.]
+    point_cloud_range=[5, -72., -10., 165., 72., 30.]
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
     voxel_size=[0.25, 0.25, 4]
 
@@ -182,8 +182,6 @@ def main(args):
                             data_dict[key][j] = data_dict[key][j].cuda()
             
             optimizer.zero_grad()
-            data_key = os.path.normpath(data_dict['batched_img_info'][0]['image_path']).split('/')[0]
-            data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][0]['image_path'])).split('.')[0]
 
             batched_pts = data_dict['batched_pts']
             batched_gt_bboxes = data_dict['batched_gt_bboxes']
@@ -195,39 +193,44 @@ def main(args):
                              batched_gt_bboxes=batched_gt_bboxes, 
                              batched_gt_labels=batched_labels)
 
-            device = bbox_cls_pred.device
-            feature_map_size = torch.tensor(list(bbox_cls_pred.size()[-2:]), device=device)
-            anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
             batch_size = len(batched_pts)
-            batched_anchors = [anchors for _ in range(batch_size)]
-            result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors)[0]
+            for i in range(batch_size):
+                data_key = os.path.normpath(data_dict['batched_img_info'][i]['image_path']).split('/')[0]
 
-                if result_filter[i]['lidar_bboxes'].shape[0] == 0:
-                    data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
-                    print(f'prediction above score threshold is empty in {data_name}.png')
-                    continue
+                if VISUALIZE:
+                    calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
+                    calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
+                    new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
+                    old_yaml = os.path.join(calib_dir, "lidar.yaml")
+                
+                    # TODO: temporary fix — replace with permanent calibration loader
+                    calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
+                    tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
-            calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
-            calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
-            new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
-            old_yaml = os.path.join(calib_dir, "lidar.yaml")
-        
-            # TODO: temporary fix — replace with permanent calibration loader
-            calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
-            tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
+                    parent_path = os.path.dirname(os.path.normpath(args.data_root))
+                    img_path = os.path.join(os.path.normpath(args.data_root), *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
+                    img = cv2.imread(img_path)
+                    image_shape = img.shape[:2]
 
-            parent_path = os.path.dirname(os.path.normpath(args.data_root))
-            img_path = os.path.join(os.path.normpath(args.data_root), *parent_path.split('/'), data_dict['batched_img_info'][0]['image_path'])
-            img = cv2.imread(img_path)
-            image_shape = img.shape[:2]
+                    device = bbox_cls_pred.device
+                    feature_map_size = torch.tensor(list(bbox_cls_pred.size()[-2:]), device=device)
+                    anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
+                    batched_anchors = [anchors for _ in range(batch_size)]
+                    result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors, mode="train")   # visualize above threshold
 
-            result_filter = keep_bbox_from_image_range(result_filter, tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
-            result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
-            lidar_bboxes = result_filter['lidar_bboxes']
-            labels, scores = result_filter['labels'], result_filter['scores']
-            if VISUALIZE:
-                vis_pc(batched_pts[0].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
-            
+                    res_filter = keep_bbox_from_lidar_range(result_filter[i], pcd_limit_range)
+                    lidar_bboxes = res_filter['lidar_bboxes']
+                    labels, scores = res_filter['labels'], res_filter['scores']
+
+
+                    if result_filter[i]['lidar_bboxes'].shape[0] == 0:
+                        data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
+                        print(f'visualize pass! prediction above score threshold is empty in {data_name}.png')
+                        continue
+
+                    vis_pc(batched_pts[i].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
+                    vis_pc(batched_pts[i].cpu().numpy(), bboxes=batched_gt_bboxes[i].cpu().numpy(), labels=batched_labels[i].cpu().numpy())
+
             bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
             bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
             bbox_dir_cls_pred = bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
@@ -299,15 +302,7 @@ def main(args):
                 batch_size = len(results)
                 for i in range(batch_size):
                     data_name = os.path.normpath(data_dict['batched_img_info'][i]['image_path'])
-                    if results[i] == None:
-                        print(f'prediction is invalid in {data_name}')
-                        continue
-
-                # visualize image
-                for i in range(batch_size):
                     data_key = os.path.normpath(data_dict['batched_img_info'][i]['image_path']).split('/')[0]
-                    data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
-
                     parent_path = os.path.dirname(os.path.normpath(args.data_root))
                     img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
 
@@ -324,8 +319,7 @@ def main(args):
                     img = cv2.imread(img_path, 1)
                     image_shape = img.shape[:2]
 
-                    res_filter = keep_bbox_from_image_range(results[i], tr_velo_to_cam, r0_rect, P2, image_shape, K=K, D=D, prefix='avikus')
-                    res_filter = keep_bbox_from_lidar_range(res_filter, pcd_limit_range)
+                    res_filter = keep_bbox_from_lidar_range(results[i], pcd_limit_range)
                     lidar_bboxes = res_filter['lidar_bboxes']
                     labels, scores = res_filter['labels'], res_filter['scores']
 
