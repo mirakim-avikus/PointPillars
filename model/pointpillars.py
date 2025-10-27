@@ -385,7 +385,7 @@ class PointPillarsPos(nn.Module):
     def __init__(self, nclasses=3):
         super().__init__()
         self.nclasses = nclasses
-        self.nms_thr = 0.01
+        self.nms_thr = 0.1
         self.score_thr = 0.1
         self.max_num = 50
     
