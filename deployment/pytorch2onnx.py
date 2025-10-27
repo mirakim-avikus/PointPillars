@@ -10,33 +10,25 @@ sys.path.append(os.path.join('..', os.path.dirname(CUR)))
 
 from model import PointPillarsCore
 
+CLASSES = {
+    'jetski': 0,
+    'smallboat': 1,
+    'mediumboat': 2,
+    'c-marker': 3,
+    'yacht': 4,
+    'pole': 5,
+    'dinghyboat': 6
+}
+
+POINT_CLOUD_RANGE = [4.0, -72., -10., 180., 72., 30.]
+VOXEL_SIZE = [0.25, 0.25, 4]
 
 def main(args):
-    CLASSES = {
-        'Pedestrian': 0, 
-        'Cyclist': 1, 
-        'motorboat': 2
-        }
-
-    prefix = args.prefix
-    if prefix == 'avikus':
-        point_cloud_range=[0, -50., -10., 250., 50., 10.]
-    else:
-        point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]
-    voxel_size=[0.16, 0.16, 4]
-
     if not args.no_cuda:
-        if prefix == 'avikus':
-            model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=voxel_size, point_cloud_range=point_cloud_range, prefix='avikus').cuda()
-        else:
-            model = PointPillarsCore(nclasses=len(CLASSES)).cuda()
-        
+        model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=VOXEL_SIZE, point_cloud_range=POINT_CLOUD_RANGE, prefix='avikus').cuda()
         model.load_state_dict(torch.load(args.ckpt))
     else:
-        if prefix == 'avikus':
-            model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=voxel_size, point_cloud_range=point_cloud_range, prefix='avikus')
-        else:
-            model = PointPillarsCore(nclasses=len(CLASSES))
+        model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=VOXEL_SIZE, point_cloud_range=POINT_CLOUD_RANGE, prefix='avikus')
         model.load_state_dict(
             torch.load(args.ckpt, map_location=torch.device('cpu')))
     model.eval()

@@ -7,7 +7,7 @@ import onnxruntime
 import sys
 import time
 import torch
-import pdb
+from pytorch2onnx import CLASSES, POINT_CLOUD_RANGE, VOXEL_SIZE
 
 DURATION = False
 CUR = os.path.dirname(os.path.abspath(__file__))
@@ -38,23 +38,7 @@ def to_numpy(tensor):
 
 
 def main(args):
-    CLASSES = {
-        'Pedestrian': 0, 
-        'Cyclist': 1, 
-        'motorboat': 2
-        }
-
     prefix = args.prefix
-
-    if 'avikus' in prefix:
-        point_cloud_range=[0, -50., -10., 250., 50., 10.]
-        pcd_limit_range = np.array([0.0, -50.0, -10.0, 200.0, 50.0, 10.0], dtype=np.float32)
-        voxel_size=[0.16, 0.16, 4]
-    else:
-        point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1]
-        pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
-        voxel_size=[0.16, 0.16, 4]
-
     LABEL2CLASSES = {v:k for k, v in CLASSES.items()}
 
     ## 1.1 onnx check and onnx load
@@ -77,16 +61,16 @@ def main(args):
     output_name = sess.get_inputs()[0].name
 
     if not args.no_cuda:
-        model_pre = PointPillarsPre(voxel_size=voxel_size, point_cloud_range=point_cloud_range).cuda()
+        model_pre = PointPillarsPre(voxel_size=VOXEL_SIZE, point_cloud_range=POINT_CLOUD_RANGE).cuda()
         model_post = PointPillarsPos(nclasses=len(CLASSES)).cuda()
     else:
-        model_pre = PointPillarsPre(voxel_size=voxel_size, point_cloud_range=point_cloud_range)
+        model_pre = PointPillarsPre(voxel_size=VOXEL_SIZE, point_cloud_range=POINT_CLOUD_RANGE)
         model_post = PointPillarsPos(nclasses=len(CLASSES))
     
     if not os.path.exists(args.pc_path):
         raise FileNotFoundError 
     pc = read_points(args.pc_path)
-    pc = point_range_filter(pc, pcd_limit_range)
+    pc = point_range_filter(pc, POINT_CLOUD_RANGE)
     if 'avikus' in prefix:
         pc[:, -1] /= 255.0
     pc_torch = torch.from_numpy(pc)
@@ -103,7 +87,7 @@ def main(args):
         result = sess.run(None, input_data)
         result = [torch.from_numpy(item).cuda() for item in result]
         result_filter = model_post(result)[0]
-    result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
+    result_filter = keep_bbox_from_lidar_range(result_filter, np.array(POINT_CLOUD_RANGE))
     lidar_bboxes = result_filter['lidar_bboxes']
     labels, scores = result_filter['labels'], result_filter['scores']
     vis_pc(pc, bboxes=lidar_bboxes, labels=labels)
@@ -135,7 +119,7 @@ def main(args):
 
                 start_post_time = time.time()
                 result_filter = model_post(result)[0]
-                result_filter = keep_bbox_from_lidar_range(result_filter, pcd_limit_range)
+                result_filter = keep_bbox_from_lidar_range(result_filter, POINT_CLOUD_RANGE)
                 end_post_time = time.time()
                 time_post += (end_post_time - start_post_time)
         end_total_time = time.time()

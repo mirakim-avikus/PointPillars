@@ -263,15 +263,8 @@ class PointPillarsCore(nn.Module):
         
         # anchors
         if 'avikus' in prefix:
-            ranges = [[0, -50., -10., 250., 50., 10.],
-                    [0, -50., -10., 250., 50., 10.],
-                    [0, -50., -10., 250., 50., 10.]]
-            sizes = [[3.0, 10.0, 3.0], [3.0, 10.0, 3.0], [3.0, 10.0, 3.0]]
-        else:
-            ranges = [[0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                        [0, -39.68, -0.6, 69.12, 39.68, -0.6],
-                        [0, -39.68, -1.78, 69.12, 39.68, -1.78]]
-            sizes = [[0.6, 0.8, 1.73], [0.6, 1.76, 1.73], [1.6, 3.9, 1.56]]
+            ranges = [point_cloud_range for _ in range(nclasses)]
+            sizes = [[1.0, 2.0, 1.0], [4.0, 12.0, 5.0], [8.0, 22.0, 10.0], [1.5, 1.0, 2.5], [4.0, 11.0, 14.0], [0.5, 0.5, 4.0], [3.0, 1.5, 1.0]]
 
         rotations=[0, 1.57]
         self.anchors_generator = Anchors(ranges=ranges, 
@@ -280,9 +273,7 @@ class PointPillarsCore(nn.Module):
         
         # train
         self.assigners = [
-            {'pos_iou_thr': 0.5, 'neg_iou_thr': 0.35, 'min_iou_thr': 0.35},
-            {'pos_iou_thr': 0.5, 'neg_iou_thr': 0.35, 'min_iou_thr': 0.35},
-            {'pos_iou_thr': 0.6, 'neg_iou_thr': 0.45, 'min_iou_thr': 0.45},
+            {'pos_iou_thr': 0.5, 'neg_iou_thr': 0.35, 'min_iou_thr': 0.35} for _ in range(nclasses)
         ]
 
         # val and test
@@ -457,7 +448,7 @@ class PointPillarsPos(nn.Module):
     def forward(self, results):
         pos_results = []
         for result in results:
-            bbox_pred, bbox_cls_pred, bbox_dir_cls_pred = result[:, :7], result[:, 7:10], result[:, 10]
+            bbox_pred, bbox_cls_pred, bbox_dir_cls_pred = result[:, :7], result[:, 7:7+self.nclasses], result[:, 7+self.nclasses]
             pos_result = self.nms_filter(bbox_pred, bbox_cls_pred, bbox_dir_cls_pred)
             if pos_result is not None:
                 pos_results.append(pos_result) 
