@@ -38,7 +38,6 @@ def main(args):
     max_pillars = 40000
     pillars = torch.randn(max_pillars, 32, 4)
     coors_batch = torch.randint(0, 216, (max_pillars, 3))
-    coors_batch[:, 0] = 0
     npoints_per_pillar = torch.randint(0, 32, (max_pillars, ))
     npoints_per_pillar = npoints_per_pillar.to(torch.int32)
     if not args.no_cuda:
