@@ -69,7 +69,7 @@ class PillarEncoder(nn.Module):
         y_offset_pi_center = pillars[:, :, 1:2] - (coors_batch[:, None, 1:2] * self.vy + self.y_offset) # (p1 + p2 + ... + pb, num_points, 1)
 
         # 3. encoder
-        features = torch.cat([pillars, offset_pt_center, x_offset_pi_center, y_offset_pi_center], dim=-1) # (p1 + p2 + ... + pb, num_points, 9)
+        features = torch.cat([pillars, offset_pt_center], dim=-1) # (p1 + p2 + ... + pb, num_points, 9)
         features[:, :, 0:1] = x_offset_pi_center # tmp
         features[:, :, 1:2] = y_offset_pi_center # tmp
         # In consitent with mmdet3d. 
