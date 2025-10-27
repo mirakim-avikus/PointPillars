@@ -91,6 +91,11 @@ def main(args):
     lidar_bboxes = result_filter['lidar_bboxes']
     labels, scores = result_filter['labels'], result_filter['scores']
     vis_pc(pc, bboxes=lidar_bboxes, labels=labels)
+    np.set_printoptions(precision=3, suppress=True)
+    lidar_bboxes = lidar_bboxes[np.argsort(-lidar_bboxes[:, 0])]
+    print(f'lidar_bboxes : {lidar_bboxes}')
+    print(f'labels : {labels}')
+    print(f'scores : {scores}')
     result_array = np.concatenate([lidar_bboxes, scores[:, None], labels[:, None]], axis=-1)
     os.makedirs(os.path.dirname(args.saved_path), exist_ok=True)
     np.savetxt(args.saved_path, result_array, fmt='%.4f')
