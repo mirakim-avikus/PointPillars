@@ -21,7 +21,8 @@ CLASSES = {
 }
 
 POINT_CLOUD_RANGE = [4.0, -72., -10., 180., 72., 30.]
-VOXEL_SIZE = [0.25, 0.25, 4]
+z_span = POINT_CLOUD_RANGE[5] - POINT_CLOUD_RANGE[2]
+VOXEL_SIZE = [0.25, 0.25, z_span]
 
 def main(args):
     if not args.no_cuda:
@@ -60,8 +61,6 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt', default='../pretrained/epoch_160.pth', help='your checkpoint for kitti')
     parser.add_argument('--saved_onnx_path', default='../pretrained/model.onnx',
                         help='your saved onnx path')
-    parser.add_argument('--prefix', required=True,
-                        help='choose either avikus or kitti')
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
     args = parser.parse_args()
