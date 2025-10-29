@@ -103,7 +103,8 @@ def main(args):
 
     point_cloud_range=[5, -72., -10., 165., 72., 30.]
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
-    voxel_size=[0.25, 0.25, 4]
+    z_span = point_cloud_range[5] - point_cloud_range[2]
+    voxel_size=[0.25, 0.25, z_span]
 
     train_dataset = Avikus(data_root=args.data_root,
                         split='train', point_cloud_range=point_cloud_range)
