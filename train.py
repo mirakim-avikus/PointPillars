@@ -166,9 +166,9 @@ def main(args):
                                                     max_momentum=0.95,
                                                     div_factor=10)
 
-    saved_ckpt_path = os.path.join(args.saved_path, 'checkpoints')
+    saved_ckpt_path = os.path.join(args.saved_path, args.ckpt_name, 'weights')
     os.makedirs(saved_ckpt_path, exist_ok=True)
-    saved_logs_path = os.path.join(saved_ckpt_path, 'summary')
+    saved_logs_path = os.path.join(args.saved_path, args.ckpt_name, 'summary')
     os.makedirs(saved_logs_path, exist_ok=True)
     writer = SummaryWriter(saved_logs_path)
 
