@@ -164,11 +164,12 @@ def main(args):
                                                     base_momentum=0.95*0.895, 
                                                     max_momentum=0.95,
                                                     div_factor=10)
-    saved_logs_path = os.path.join(args.saved_path, 'summary')
-    os.makedirs(saved_logs_path, exist_ok=True)
-    writer = SummaryWriter(saved_logs_path)
+
     saved_ckpt_path = os.path.join(args.saved_path, 'checkpoints')
     os.makedirs(saved_ckpt_path, exist_ok=True)
+    saved_logs_path = os.path.join(saved_ckpt_path, 'summary')
+    os.makedirs(saved_logs_path, exist_ok=True)
+    writer = SummaryWriter(saved_logs_path)
 
     for epoch in range(args.max_epoch):
         print('=' * 20, epoch, '=' * 20)
