@@ -9,13 +9,47 @@ import time
 import torch
 from pytorch2onnx import CLASSES, POINT_CLOUD_RANGE, VOXEL_SIZE
 
+SAVE_BIN = True
 DURATION = False
+RAW_POINTS = False
+
 CUR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(CUR))
 
 from utils import read_points, keep_bbox_from_lidar_range, vis_pc
 from model import PointPillarsPre, PointPillarsPos
 
+def _save_shape_txt(path, shape_tuple):
+    with open(path, 'w') as f:
+        f.write(' '.join(str(int(s)) for s in shape_tuple))
+
+def save_bins(pillars, coors_batch, npoints_per_pillar, dump_dir):
+    # 1) pillars -> float32 (flatten)
+    pillars_np = to_numpy(pillars).astype(np.float32, copy=False).ravel(order='C')
+    pillars_bin = os.path.join(dump_dir, 'pillars.bin')
+    pillars_shape = os.path.join(dump_dir, 'pillars.shape.txt')
+    pillars_np.tofile(pillars_bin)
+    _save_shape_txt(pillars_shape, to_numpy(pillars).shape)
+
+    # 2) coors_batch -> int64 (flatten)  [ex: (num_pillars, 4) = [batch, z, y, x] or [b,x,y,z]]
+    coors_np = to_numpy(coors_batch).astype(np.int64, copy=False).ravel(order='C')
+    coors_bin = os.path.join(dump_dir, 'voxel_indices.bin')
+    coors_shape = os.path.join(dump_dir, 'voxel_indices.shape.txt')
+    coors_np.tofile(coors_bin)
+    _save_shape_txt(coors_shape, to_numpy(coors_batch).shape)
+
+    # 3) npoints_per_pillar -> int32 (flatten) [ex: (num_pillars,)]
+    npoints_np = to_numpy(npoints_per_pillar).astype(np.int32, copy=False).ravel(order='C')
+    npoints_bin = os.path.join(dump_dir, 'point_counts.bin')
+    npoints_shape = os.path.join(dump_dir, 'point_counts.shape.txt')
+    npoints_np.tofile(npoints_bin)
+    _save_shape_txt(npoints_shape, to_numpy(npoints_per_pillar).shape)
+
+    print(f"[Dump] saved to: {dump_dir}")
+    print(f"  - pillars: {pillars_np.shape} -> {pillars_bin}")
+    print(f"  - voxel_indices: {coors_np.shape} -> {coors_bin}")
+    print(f"  - point_counts: {npoints_np.shape} -> {npoints_bin}")
+    return
 
 def point_range_filter(pts, point_range=[0, -39.68, -3, 69.12, 39.68, 1]):
     '''
@@ -40,6 +74,9 @@ def to_numpy(tensor):
 def main(args):
     prefix = args.prefix
     LABEL2CLASSES = {v:k for k, v in CLASSES.items()}
+
+    dump_dir = getattr(args, 'dump_dir', 'dump_pre_io')
+    os.makedirs(dump_dir, exist_ok=True)
 
     ## 1.1 onnx check and onnx load
     try:
@@ -73,6 +110,10 @@ def main(args):
     pc = point_range_filter(pc, POINT_CLOUD_RANGE)
     if 'avikus' in prefix:
         pc[:, -1] /= 255.0
+
+    if RAW_POINTS:
+        pc[:, 1] *= -1
+        pc[:, 2] *= -1
     pc_torch = torch.from_numpy(pc)
 
     model_pre.eval()
@@ -81,6 +122,9 @@ def main(args):
         if not args.no_cuda:
             pc_torch = pc_torch.cuda()
         pillars, coors_batch, npoints_per_pillar = model_pre(batched_pts=[pc_torch])
+        if SAVE_BIN:
+            save_bins(pillars, coors_batch, npoints_per_pillar, dump_dir)
+
         input_data = {input_pillars_name: to_numpy(pillars),
                       input_coors_batch_name: to_numpy(coors_batch),
                       input_npoints_per_pillar_name: to_numpy(npoints_per_pillar)}
@@ -148,6 +192,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
     parser.add_argument('--prefix', default='avikus')
+    parser.add_argument('--dump_dir', required=True, default='dump_pre_io', help='directory to dump precomputed tensors')
     args = parser.parse_args()
 
     main(args)
