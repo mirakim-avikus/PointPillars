@@ -43,7 +43,10 @@ class Avikus(Dataset):
         'c-marker': 3,
         'yacht': 4,
         'pole': 5,
-        'dinghyboat': 6
+        'dinghyboat': 6,
+        'bigboat': 7,
+        'bridgepillar' : 8,
+        'buoy' : 9
         }
 
     # TODO : check IoU in 2D image detection domain 
@@ -54,7 +57,10 @@ class Avikus(Dataset):
         'c-marker': 0.5,
         'yacht': 0.6,
         'pole': 0.4,
-        'dinghyboat': 0.5
+        'dinghyboat': 0.5,
+        'bigboat': 0.6,
+        'bridgepillar' : 0.5,
+        'buoy' : 0.4,
     }
 
     def __init__(self, data_root, split, point_cloud_range, pts_prefix='velodyne_reduced'):
@@ -73,7 +79,7 @@ class Avikus(Dataset):
         self.data_aug_config=dict(
             db_sampler=dict(
                 db_sampler=db_sampler,
-                sample_groups=dict(jetski=3, smallboat=2, mediumboat=2, **{"c-marker": 2}, yacht=2, pole=3, dinghyboat=3)
+                sample_groups=dict(jetski=3, smallboat=2, mediumboat=2, **{"c-marker": 2}, yacht=2, pole=3, dinghyboat=3, bigboat=3, bridgepillar=2, buoy=3)
                 ),
             object_noise=dict(
                 num_try=100,
@@ -101,7 +107,7 @@ class Avikus(Dataset):
         for k, v in db_infos.items():
             db_infos[k] = [item for item in v if item['difficulty'] != -1]
 
-        filter_thrs = dict(jetski=10, smallboat=10, mediumboat=15, **{"c-marker": 10}, yacht=10, pole=8, dinghyboat=10)
+        filter_thrs = dict(jetski=10, smallboat=10, mediumboat=15, **{"c-marker": 10}, yacht=10, pole=8, dinghyboat=10, bigboat=20, bridgepillar=15, buoy=4)
         for cat in self.CLASSES:
             filter_thr = filter_thrs[cat]
             db_infos[cat] = [item for item in db_infos[cat] if item['num_points_in_gt']>= filter_thr]

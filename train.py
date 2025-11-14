@@ -101,7 +101,7 @@ def get_parameters(calib_path_yaml, calib_info):
 def main(args):
     setup_seed()
 
-    point_cloud_range=[5, -72., -10., 165., 72., 30.]
+    point_cloud_range=[5, -72., -10., 180., 72., 30.]
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
     z_span = point_cloud_range[5] - point_cloud_range[2]
     voxel_size=[0.25, 0.25, z_span]
