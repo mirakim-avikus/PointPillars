@@ -96,8 +96,10 @@ class Avikus(Dataset):
             object_range_filter=point_cloud_range         
         )
 
-    def remove_dont_care(self, annos_info):
-        keep_ids = [i for i, name in enumerate(annos_info['name']) if name != 'DontCare']
+    def filter_by_occ_trunc(self, annos_info, occ_thr=2, trunc_thr=1):
+        occluded = annos_info['occluded']
+        truncated = annos_info['truncated']
+        keep_ids = (occluded <= occ_thr) & (truncated <= trunc_thr)
         for k, v in annos_info.items():
             annos_info[k] = v[keep_ids]
         return annos_info
@@ -130,7 +132,7 @@ class Avikus(Dataset):
         self.r0_rect = calib_info['R0_rect'].astype(np.float32)
 
         # annotations input
-        # annos_info = self.remove_dont_care(annos_info)
+        annos_info = self.filter_by_occ_trunc(annos_info, occ_thr=1, trunc_thr=1)
         annos_name = annos_info['name']
         annos_location = annos_info['location']
         annos_dimension = annos_info['dimensions']
