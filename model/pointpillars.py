@@ -264,8 +264,16 @@ class PointPillarsCore(nn.Module):
         # anchors
         if 'avikus' in prefix:
             ranges = [point_cloud_range for _ in range(nclasses)]
-            sizes = [[1.0, 2.0, 1.0], [4.0, 12.0, 5.0], [8.0, 22.0, 10.0], [1.5, 1.0, 2.5], [4.0, 11.0, 14.0], [0.5, 0.5, 4.0], [3.0, 1.5, 1.0]]
-
+            sizes = [[3.37, 1.51, 1.32], \
+                    [12.0, 4.14, 4.84], # label[l, w, h] -> anchor_size[w, l, h] \
+                    [27.53, 7.44, 9.81], \
+                    [1.14, 2.02, 4.37], \
+                    [11.79, 5.40, 13.13], \
+                    [0.74, 0.72, 3.88], \
+                    [3.02, 1.41, 1.00], \
+                    [55.20, 12.06, 16.11], \
+                    [18.59, 18.02, 14.01], \
+                    [0.42, 0.45, 0.38]]  # human : [0.7, 0.6, 1.2], 
         rotations=[0, 1.57]
         self.anchors_generator = Anchors(ranges=ranges, 
                                          sizes=sizes, 

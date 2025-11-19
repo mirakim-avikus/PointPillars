@@ -17,10 +17,13 @@ CLASSES = {
     'c-marker': 3,
     'yacht': 4,
     'pole': 5,
-    'dinghyboat': 6
+    'dinghyboat': 6,
+    'bigboat': 7,
+    'bridgepillar': 8,
+    'buoy': 9
 }
 
-POINT_CLOUD_RANGE = [4.0, -72., -10., 180., 72., 30.]
+POINT_CLOUD_RANGE = [5.0, -72., -10., 180., 72., 30.]
 z_span = POINT_CLOUD_RANGE[5] - POINT_CLOUD_RANGE[2]
 VOXEL_SIZE = [0.25, 0.25, z_span]
 
