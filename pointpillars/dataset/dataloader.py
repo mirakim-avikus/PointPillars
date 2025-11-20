@@ -44,7 +44,10 @@ def get_dataloader(dataset, batch_size, num_workers, shuffle=True, drop_last=Fal
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        drop_last=drop_last, 
+        drop_last=drop_last,
         collate_fn=collate,
+        pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=2,
     )
     return dataloader
