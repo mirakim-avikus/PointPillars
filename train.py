@@ -16,9 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 import random
 
 random.seed(0); np.random.seed(0); torch.manual_seed(0); torch.cuda.manual_seed_all(0)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-torch.use_deterministic_algorithms(True)
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.deterministic = False
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
 CLASSES = Avikus.CLASSES
@@ -171,6 +170,7 @@ def main(args):
     saved_logs_path = os.path.join(args.saved_path, args.ckpt_name, 'summary')
     os.makedirs(saved_logs_path, exist_ok=True)
     writer = SummaryWriter(saved_logs_path)
+    scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(args.max_epoch):
         print('=' * 20, epoch, '=' * 20)
@@ -179,9 +179,17 @@ def main(args):
             if not args.no_cuda:
                 # move the tensors to the cuda
                 for key in data_dict:
-                    for j, item in enumerate(data_dict[key]):
-                        if torch.is_tensor(item):
-                            data_dict[key][j] = data_dict[key][j].cuda()
+                    if isinstance(data_dict[key], torch.Tensor):
+                        data_dict[key] = data_dict[key].cuda(non_blocking=True)
+                    else:
+                        # batched lists
+                        new_list = []
+                        for item in data_dict[key]:
+                            if torch.is_tensor(item):
+                                new_list.append(item.cuda(non_blocking=True))
+                            else:
+                                new_list.append(item)
+                        data_dict[key] = new_list
             
             optimizer.zero_grad()
 
@@ -189,82 +197,85 @@ def main(args):
             batched_gt_bboxes = data_dict['batched_gt_bboxes']
             batched_labels = data_dict['batched_labels']
 
-            bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
-                pointpillars(batched_pts=batched_pts, 
-                             mode='train',
-                             batched_gt_bboxes=batched_gt_bboxes, 
-                             batched_gt_labels=batched_labels)
+            with torch.cuda.amp.autocast():
+                bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, anchor_target_dict = \
+                    pointpillars(
+                        batched_pts=batched_pts,
+                        mode='train',
+                        batched_gt_bboxes=batched_gt_bboxes,
+                        batched_gt_labels=batched_labels)
 
-            batch_size = len(batched_pts)
-            for i in range(batch_size):
-                data_key = os.path.normpath(data_dict['batched_img_info'][i]['image_path']).split('/')[0]
+                batch_size = len(batched_pts)
+                for i in range(batch_size):
+                    data_key = os.path.normpath(data_dict['batched_img_info'][i]['image_path']).split('/')[0]
 
-                if VISUALIZE:
-                    calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
-                    calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
-                    new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
-                    old_yaml = os.path.join(calib_dir, "lidar.yaml")
+                    if VISUALIZE:
+                        calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
+                        calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
+                        new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
+                        old_yaml = os.path.join(calib_dir, "lidar.yaml")
+                    
+                        # TODO: temporary fix — replace with permanent calibration loader
+                        calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
+                        tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
+
+                        parent_path = os.path.dirname(os.path.normpath(args.data_root))
+                        img_path = os.path.join(os.path.normpath(args.data_root), *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
+                        img = cv2.imread(img_path)
+                        image_shape = img.shape[:2]
+
+                        device = bbox_cls_pred.device
+                        feature_map_size = torch.tensor(list(bbox_cls_pred.size()[-2:]), device=device)
+                        anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
+                        batched_anchors = [anchors for _ in range(batch_size)]
+                        result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors, mode="train")   # visualize above threshold
+
+                        res_filter = keep_bbox_from_lidar_range(result_filter[i], pcd_limit_range)
+                        lidar_bboxes = res_filter['lidar_bboxes']
+                        labels, scores = res_filter['labels'], res_filter['scores']
+
+
+                        if result_filter[i]['lidar_bboxes'].shape[0] == 0:
+                            data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
+                            print(f'visualize pass! prediction above score threshold is empty in {data_name}.png')
+                            continue
+
+                        vis_pc(batched_pts[i].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
+                        vis_pc(batched_pts[i].cpu().numpy(), bboxes=batched_gt_bboxes[i].cpu().numpy(), labels=batched_labels[i].cpu().numpy())
+
+                bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
+                bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
+                bbox_dir_cls_pred = bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
+
+                batched_bbox_labels = anchor_target_dict['batched_labels'].reshape(-1)
+                batched_label_weights = anchor_target_dict['batched_label_weights'].reshape(-1)
+                batched_bbox_reg = anchor_target_dict['batched_bbox_reg'].reshape(-1, 7)
+                batched_dir_labels = anchor_target_dict['batched_dir_labels'].reshape(-1)
                 
-                    # TODO: temporary fix — replace with permanent calibration loader
-                    calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
-                    tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
+                pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
+                bbox_pred = bbox_pred[pos_idx]
+                batched_bbox_reg = batched_bbox_reg[pos_idx]
+                bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
+                batched_dir_labels = batched_dir_labels[pos_idx]
 
-                    parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                    img_path = os.path.join(os.path.normpath(args.data_root), *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
-                    img = cv2.imread(img_path)
-                    image_shape = img.shape[:2]
+                num_cls_pos = (batched_bbox_labels < num_cls).sum()
+                bbox_cls_pred = bbox_cls_pred[batched_label_weights > 0]
+                batched_bbox_labels[batched_bbox_labels < 0] = num_cls
+                batched_bbox_labels = batched_bbox_labels[batched_label_weights > 0]
 
-                    device = bbox_cls_pred.device
-                    feature_map_size = torch.tensor(list(bbox_cls_pred.size()[-2:]), device=device)
-                    anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
-                    batched_anchors = [anchors for _ in range(batch_size)]
-                    result_filter = pointpillars.get_predicted_bboxes(bbox_cls_pred, bbox_pred, bbox_dir_cls_pred, batched_anchors, mode="train")   # visualize above threshold
+                loss_dict = loss_func(bbox_cls_pred=bbox_cls_pred,
+                                    bbox_pred=bbox_pred,
+                                    bbox_dir_cls_pred=bbox_dir_cls_pred,
+                                    batched_labels=batched_bbox_labels, 
+                                    num_cls_pos=num_cls_pos, 
+                                    batched_bbox_reg=batched_bbox_reg, 
+                                    batched_dir_labels=batched_dir_labels)
+                print(' | '.join(f'train loss {k}: {v:.4f}' for k, v in loss_dict.items()))
+                loss = loss_dict['total_loss']
 
-                    res_filter = keep_bbox_from_lidar_range(result_filter[i], pcd_limit_range)
-                    lidar_bboxes = res_filter['lidar_bboxes']
-                    labels, scores = res_filter['labels'], res_filter['scores']
-
-
-                    if result_filter[i]['lidar_bboxes'].shape[0] == 0:
-                        data_name = os.path.basename(os.path.normpath(data_dict['batched_img_info'][i]['image_path'])).split('.')[0]
-                        print(f'visualize pass! prediction above score threshold is empty in {data_name}.png')
-                        continue
-
-                    vis_pc(batched_pts[i].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
-                    vis_pc(batched_pts[i].cpu().numpy(), bboxes=batched_gt_bboxes[i].cpu().numpy(), labels=batched_labels[i].cpu().numpy())
-
-            bbox_cls_pred = bbox_cls_pred.permute(0, 2, 3, 1).reshape(-1, num_cls)
-            bbox_pred = bbox_pred.permute(0, 2, 3, 1).reshape(-1, 7)
-            bbox_dir_cls_pred = bbox_dir_cls_pred.permute(0, 2, 3, 1).reshape(-1, 2)
-
-            batched_bbox_labels = anchor_target_dict['batched_labels'].reshape(-1)
-            batched_label_weights = anchor_target_dict['batched_label_weights'].reshape(-1)
-            batched_bbox_reg = anchor_target_dict['batched_bbox_reg'].reshape(-1, 7)
-            batched_dir_labels = anchor_target_dict['batched_dir_labels'].reshape(-1)
-            
-            pos_idx = (batched_bbox_labels >= 0) & (batched_bbox_labels < num_cls)
-            bbox_pred = bbox_pred[pos_idx]
-            batched_bbox_reg = batched_bbox_reg[pos_idx]
-            bbox_dir_cls_pred = bbox_dir_cls_pred[pos_idx]
-            batched_dir_labels = batched_dir_labels[pos_idx]
-
-            num_cls_pos = (batched_bbox_labels < num_cls).sum()
-            bbox_cls_pred = bbox_cls_pred[batched_label_weights > 0]
-            batched_bbox_labels[batched_bbox_labels < 0] = num_cls
-            batched_bbox_labels = batched_bbox_labels[batched_label_weights > 0]
-
-            loss_dict = loss_func(bbox_cls_pred=bbox_cls_pred,
-                                  bbox_pred=bbox_pred,
-                                  bbox_dir_cls_pred=bbox_dir_cls_pred,
-                                  batched_labels=batched_bbox_labels, 
-                                  num_cls_pos=num_cls_pos, 
-                                  batched_bbox_reg=batched_bbox_reg, 
-                                  batched_dir_labels=batched_dir_labels)
-            print(' | '.join(f'train loss {k}: {v:.4f}' for k, v in loss_dict.items()))
-            loss = loss_dict['total_loss']
-            loss.backward()
-            # torch.nn.utils.clip_grad_norm_(pointpillars.parameters(), max_norm=35)
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             scheduler.step()
 
             global_step = epoch * len(train_dataloader) + train_step + 1
@@ -381,8 +392,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_root', required=True, default='/mnt/ssd1/lifa_rdata/det/kitti', 
                         help='your data root for kitti')
     parser.add_argument('--saved_path', default='pillar_logs')
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--batch_size', type=int, default=12)
+    parser.add_argument('--num_workers', type=int, default=12)
     parser.add_argument('--init_lr', type=float, default=0.00025)
     parser.add_argument('--max_epoch', type=int, default=200000)
     parser.add_argument('--log_freq', type=int, default=8)

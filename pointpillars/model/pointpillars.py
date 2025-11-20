@@ -102,6 +102,7 @@ class PillarEncoder(nn.Module):
             cur_features = pooling_features[cur_coors_idx]
 
             canvas = torch.zeros((self.x_l, self.y_l, self.out_channel), dtype=torch.float32, device=device)
+            canvas = canvas.to(cur_features.dtype)
             if sum(cur_coors_idx) > 0:
                 canvas[cur_coors[:, 1], cur_coors[:, 2]] = cur_features
             canvas = canvas.permute(2, 1, 0).contiguous()

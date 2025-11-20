@@ -41,11 +41,17 @@ class Loss(nn.Module):
         nclasses = bbox_cls_pred.size(1)
         batched_labels = F.one_hot(batched_labels, nclasses + 1)[:, :nclasses].float() # (n, 3)
 
-        bbox_cls_pred_sigmoid = torch.sigmoid(bbox_cls_pred)
-        weights = self.alpha * (1 - bbox_cls_pred_sigmoid).pow(self.gamma) * batched_labels + \
-             (1 - self.alpha) * bbox_cls_pred_sigmoid.pow(self.gamma) * (1 - batched_labels) # (n, 3)
-        cls_loss = F.binary_cross_entropy(bbox_cls_pred_sigmoid, batched_labels, reduction='none')
-        cls_loss = cls_loss * weights
+        # 2. focal loss -> cls loss for AMP
+        logits = bbox_cls_pred
+        targets = batched_labels.float()
+        bce_loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        p = torch.sigmoid(logits)
+        pt = p * targets + (1 - p) * (1 - targets)     # pt = p if y=1 else (1-p)
+        alpha = self.alpha
+        gamma = self.gamma
+        focal_weight = alpha * targets + (1 - alpha) * (1 - targets)
+        focal_weight = focal_weight * (1 - pt).pow(gamma)
+        cls_loss = focal_weight * bce_loss
         if num_cls_pos > 0:
             cls_loss = cls_loss.sum() / num_cls_pos
         else:
