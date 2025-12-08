@@ -15,3 +15,4 @@ data/avikus/motorboat/cars/camera/1747113334782.jpg
 data/avikus/motorboat/cars/lidar/Data/1747113334772.avikus.pcd
 inference.sh
 test_avikus.py
+data
