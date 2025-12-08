@@ -15,8 +15,6 @@ class PillarLayer(nn.Module):
                                         point_cloud_range=point_cloud_range,
                                         max_num_points=max_num_points,
                                         max_voxels=max_voxels)
-        self.max_voxels = max_voxels[0]
-        self.max_num_points = max_num_points
 
     @torch.no_grad()
     def forward(self, batched_pts):
@@ -31,28 +29,21 @@ class PillarLayer(nn.Module):
         for i, pts in enumerate(batched_pts):
             if pts.shape[0] == 0:
                 continue
-
-            pillars_fixed = torch.zeros((self.max_voxels, self.max_num_points, 4), dtype=torch.float32, device=pts.device)
-            coors_fixed = torch.zeros((self.max_voxels, 3), dtype=torch.int64, device=pts.device)   # (batch, z, y, x)
-            npoints_fixed = torch.zeros((self.max_voxels,), dtype=torch.int32, device=pts.device)
-            
-            voxels_out, coors_out, np_out = self.voxel_layer(pts)
-            num_use = min(voxels_out.shape[0], self.max_voxels)
-
-            pillars_fixed[:num_use] = voxels_out[:num_use]
-            coors_fixed[:num_use] = coors_out[:num_use]
-            npoints_fixed[:num_use] = np_out[:num_use]
-
-            pillars.append(pillars_fixed)
-            coors.append(coors_fixed.long())
-            npoints_per_pillar.append(npoints_fixed)
-        pillars = torch.cat(pillars, dim=0)
-        npoints_per_pillar = torch.cat(npoints_per_pillar, dim=0)
-
+            else:
+                voxels_out, coors_out, num_points_per_voxel_out = self.voxel_layer(pts) 
+            # voxels_out: (max_voxel, num_points, c), coors_out: (max_voxel, 3)
+            # num_points_per_voxel_out: (max_voxel, )
+            pillars.append(voxels_out)
+            coors.append(coors_out.long())
+            npoints_per_pillar.append(num_points_per_voxel_out)
+        
+        pillars = torch.cat(pillars, dim=0) # (p1 + p2 + ... + pb, num_points, c)
+        npoints_per_pillar = torch.cat(npoints_per_pillar, dim=0) # (p1 + p2 + ... + pb, )
         coors_batch = []
-        for i, cur in enumerate(coors):
-            coors_batch.append(F.pad(cur, (1, 0), value=i))
-        coors_batch = torch.cat(coors_batch, dim=0)
+        for i, cur_coors in enumerate(coors):
+            coors_batch.append(F.pad(cur_coors, (1, 0), value=i))
+        coors_batch = torch.cat(coors_batch, dim=0) # (p1 + p2 + ... + pb, 1 + 3)
+
         return pillars, coors_batch, npoints_per_pillar
 
 
@@ -76,16 +67,9 @@ class PillarEncoder(nn.Module):
         npoints_per_pillar: (p1 + p2 + ... + pb, )
         return:  (bs, out_channel, y_l, x_l)
         '''
-        w = self.conv.weight
-        pillars = pillars.to(device=w.device, dtype=w.dtype)
-        coors_batch = coors_batch.to(device=w.device)
-        npoints_per_pillar = npoints_per_pillar.to(device=w.device)
         device = pillars.device
-
-        # === 1. point center offset (0 나누기 방지 ===)
-        # npoints_safe: min=1로 클램프 -> dummy pillar에서도 0으로 나눠지지 않게
-        npoints_safe = npoints_per_pillar.clamp(min=1).to(pillars.dtype)  # (N,)
-        offset_pt_center = pillars[:, :, :3] - torch.sum(pillars[:, :, :3], dim=1, keepdim=True) / npoints_safe[:, None, None] # (p1 + p2 + ... + pb, num_points, 3)
+        # 1. calculate offset to the points center (in each pillar)
+        offset_pt_center = pillars[:, :, :3] - torch.sum(pillars[:, :, :3], dim=1, keepdim=True) / npoints_per_pillar[:, None, None] # (p1 + p2 + ... + pb, num_points, 3)
 
         # 2. calculate offset to the pillar center
         x_offset_pi_center = pillars[:, :, :1] - (coors_batch[:, None, 1:2] * self.vx + self.x_offset) # (p1 + p2 + ... + pb, num_points, 1)
