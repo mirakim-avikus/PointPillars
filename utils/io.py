@@ -43,7 +43,7 @@ def read_points(file_path, dim=4):
             elif line.startswith(b'POINTS'):
                 num_points = int(line.strip().split()[1])
 
-        assert all(field in fields for field in [b'x', b'y', b'z', b'intensity'])
+        assert all(field in fields for field in [b'x', b'y', b'z', b'i', b't'])
 
         field_idx = {name: idx for idx, name in enumerate(fields)}
         point_step = sum(sizes[i] * counts[i] for i in range(len(sizes)))
@@ -59,7 +59,7 @@ def read_points(file_path, dim=4):
                 values[field_idx[b'x']],
                 values[field_idx[b'y']],
                 values[field_idx[b'z']],
-                values[field_idx[b'intensity']]
+                values[field_idx[b'i']]
             ]
             points.append(point)
 
