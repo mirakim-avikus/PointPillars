@@ -78,6 +78,10 @@ def main():
     path_fp16_in  = f"{base}_fp16.onnx"
     path_fp16_out = f"{base}_fp16_mixed.onnx"
 
+    print(f"Input FP32 Model: {path_fp32}")
+    print(f"Output FP16 Model: {path_fp16_in}")
+    print(f"Output Mixed Model: {path_fp16_out}")
+
     model = onnx.load(path_fp32)
     model_fp16 = float16.convert_float_to_float16(
         model,
@@ -91,10 +95,6 @@ def main():
 
     fix_mixed_precision(path_fp16_in, path_fp16_out)
     print("All conversions completed successfully!")
-
-    print(f"Input FP32 Model: {path_fp32}")
-    print(f"Output FP16 Model: {path_fp16_in}")
-    print(f"Output Mixed Model: {path_fp16_out}")
 
 if __name__ == "__main__":
     main()
