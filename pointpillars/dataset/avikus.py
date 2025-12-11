@@ -109,7 +109,7 @@ class Avikus(Dataset):
         for k, v in db_infos.items():
             db_infos[k] = [item for item in v if item['difficulty'] != -1]
 
-        filter_thrs = dict(jetski=10, smallboat=10, mediumboat=15, **{"c-marker": 10}, yacht=10, pole=8, dinghyboat=10, bigboat=20, bridgepillar=15, buoy=4)
+        filter_thrs = dict(jetski=10, smallboat=10, mediumboat=20, **{"c-marker": 10}, yacht=20, pole=8, dinghyboat=10, bigboat=40, bridgepillar=20, buoy=5)
         for cat in self.CLASSES:
             filter_thr = filter_thrs[cat]
             db_infos[cat] = [item for item in db_infos[cat] if item['num_points_in_gt']>= filter_thr]
@@ -152,11 +152,11 @@ class Avikus(Dataset):
             'dimension': annos_dimension,
             'rotation_y': rotation_y
         }
-        if self.split in ['train', 'trainval']:
-            data_dict = data_augment(self.CLASSES, self.data_root, data_dict, self.data_aug_config)
-        else:
-            data_dict = point_range_filter(data_dict, point_range=self.data_aug_config['point_range_filter'])
-            data_dict = object_range_filter(data_dict, object_range=self.data_aug_config['object_range_filter'])
+        # if self.split in ['train', 'trainval']:
+        #     data_dict = data_augment(self.CLASSES, self.data_root, data_dict, self.data_aug_config)
+        # else:
+        data_dict = point_range_filter(data_dict, point_range=self.data_aug_config['point_range_filter'])
+        data_dict = object_range_filter(data_dict, object_range=self.data_aug_config['object_range_filter'])
 
         return data_dict
 
