@@ -14,4 +14,4 @@ python3 "$SCRIPT_DIR/json2txt.py" --data_root "$DATA_ROOT"
 python3 "$SCRIPT_DIR/split_train_val.py" --data_root "$DATA_ROOT"
 python3 "$SCRIPT_DIR/generate_calib.py" --data_root "$DATA_ROOT"
 python3 "$SCRIPT_DIR/pre_process_kitti.py" --data_root "$DATA_ROOT"
-python3 "$SCRIPT_DIR/set_anchor.py" --data_root "$DATA_R
+python3 "$SCRIPT_DIR/set_anchor.py" --data_root "$DATA_ROOT"

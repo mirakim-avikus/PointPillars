@@ -392,10 +392,10 @@ if __name__ == '__main__':
     parser.add_argument('--data_root', required=True, default='/mnt/ssd1/lifa_rdata/det/kitti', 
                         help='your data root for kitti')
     parser.add_argument('--saved_path', default='pillar_logs')
-    parser.add_argument('--batch_size', type=int, default=12)
+    parser.add_argument('--batch_size', type=int, default=6)
     parser.add_argument('--num_workers', type=int, default=12)
     parser.add_argument('--init_lr', type=float, default=0.00025)
-    parser.add_argument('--max_epoch', type=int, default=200000)
+    parser.add_argument('--max_epoch', type=int, default=160)
     parser.add_argument('--log_freq', type=int, default=8)
     parser.add_argument('--ckpt_freq_epoch', type=int, default=20)
     parser.add_argument('--ckpt_name', type=str, required=True)
