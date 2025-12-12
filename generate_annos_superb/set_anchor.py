@@ -11,10 +11,16 @@ def main(args):
     print("L W H")
     for cls in classes:
         lwh = [0, 0, 0]
+        wlh = [0, 0, 0]
         for dct in data[cls]:
             lwh += dct['box3d_lidar'][3:6]
         lwh /= len(data[cls])
-        print(f'{cls} : {lwh}')
+        # wlh for anchor
+        wlh[0] = lwh[1]
+        wlh[1] = lwh[0]
+        wlh[2] = lwh[2]
+    
+        print(f'{cls} : {round(wlh[0], 2)}, {round(wlh[1], 2)}, {round(wlh[2], 2)}')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="anchor setting script")
