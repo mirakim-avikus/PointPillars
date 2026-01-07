@@ -19,6 +19,188 @@ sys.path.append(os.path.dirname(CUR))
 from utils import read_points, keep_bbox_from_lidar_range, vis_pc
 from model import PointPillarsPre, PointPillarsPos
 
+def pillars_to_bev_rgb(
+    pillars: torch.Tensor,              # (P, 32, 4)
+    coors: torch.Tensor,                # (P, 3) or (P, 2)
+    npoints: torch.Tensor,              # (P,)
+    pc_range,
+    voxel_size,
+    max_density=32
+):
+    """
+    coord:
+      x+ forward, y+ right, z+ down
+    BEV:
+      up = forward, right = right
+    """
+
+    pillars = pillars.cpu().numpy()
+    coors = coors.cpu().numpy()
+    npoints = npoints.cpu().numpy()
+
+    x_min, y_min, z_min, x_max, y_max, z_max = pc_range
+    vx, vy, vz = voxel_size
+
+    H = int((x_max - x_min) / vx)
+    W = int((y_max - y_min) / vy)
+
+    bev_h = np.zeros((H, W), dtype=np.float32)
+    bev_d = np.zeros((H, W), dtype=np.float32)
+    bev_i = np.zeros((H, W), dtype=np.float32)
+
+    for i in range(pillars.shape[0]):
+        x_idx = coors[i][0]
+        y_idx = coors[i][1]
+
+        # 시각화 좌표계
+        row = H - 1 - x_idx
+        col = y_idx
+
+        pts = pillars[i, :npoints[i]]   # (Ni, 4)
+
+        if pts.shape[0] == 0:
+            continue
+
+        # height (z down → -z up)
+        height = (-pts[:, 2]).max()
+
+        # density
+        density = min(npoints[i], max_density) / max_density
+
+        # intensity
+        intensity = pts[:, 3].max()
+
+        bev_h[row, col] = max(bev_h[row, col], height)
+        bev_d[row, col] = max(bev_d[row, col], density)
+        bev_i[row, col] = max(bev_i[row, col], intensity)
+
+    # bev_h = np.clip((bev_h - h_min) / (h_max - h_min + 1e-6), 0, 1)
+    v = bev_h[np.isfinite(bev_h)]
+    if v.size > 0:
+        lo, hi = np.percentile(v, 2), np.percentile(v, 98)
+        bev_h = np.clip((bev_h - lo) / (hi - lo + 1e-6), 0, 1)
+    else:
+        bev_h[:] = 0
+        
+    # normalize intensity (robust)
+    v = bev_i[bev_i > 0]
+    if v.size > 0:
+        lo, hi = np.percentile(v, 2), np.percentile(v, 98)
+        bev_i = np.clip((bev_i - lo) / (hi - lo + 1e-6), 0, 1)
+
+    bev_rgb = np.stack([
+        (bev_h * 255).astype(np.uint8),   # R
+        (bev_d * 255).astype(np.uint8),   # G
+        (bev_i * 255).astype(np.uint8)    # B
+    ], axis=2)
+
+    return bev_rgb
+
+
+def make_bev(points: np.ndarray,
+             pc_range=POINT_CLOUD_RANGE,
+             resolution=0.2,
+             mode="density",
+             max_density=64):
+    """
+    points: (N,3) or (N,4) [x,y,z,(intensity)]
+      coord: x forward(+), y right(+), z down(+)
+
+    pc_range: [x_min, y_min, z_min, x_max, y_max, z_max]
+    resolution: meters per pixel
+    mode: density | height | intensity | rgb
+    """
+    assert points.ndim == 2 and points.shape[1] in (3, 4)
+
+    x_min, y_min, z_min, x_max, y_max, z_max = pc_range
+    x = points[:, 0].astype(np.float32)
+    y = points[:, 1].astype(np.float32)
+    z = points[:, 2].astype(np.float32)
+
+    # (이미 필터되어있어도) 안전 마스크
+    m = (
+        (x >= x_min) & (x < x_max) &
+        (y >= y_min) & (y < y_max) &
+        (z >= z_min) & (z < z_max)
+    )
+    pts = points[m]
+    if pts.shape[0] == 0:
+        H = int(np.ceil((x_max - x_min) / resolution))
+        W = int(np.ceil((y_max - y_min) / resolution))
+        return np.zeros((H, W), dtype=np.uint8)
+
+    x = pts[:, 0]
+    y = pts[:, 1]
+    z = pts[:, 2]
+
+    # grid size: row=x, col=y
+    H = int(np.ceil((x_max - x_min) / resolution))
+    W = int(np.ceil((y_max - y_min) / resolution))
+
+    gx = np.floor((x - x_min) / resolution).astype(np.int32)  # 0..H-1
+    gy = np.floor((y - y_min) / resolution).astype(np.int32)  # 0..W-1
+    gx = np.clip(gx, 0, H - 1)
+    gy = np.clip(gy, 0, W - 1)
+
+    # 화면 좌표:
+    # 위쪽=전방(x+) => row = H-1-gx
+    # 오른쪽=우현(y+) => col = gy (뒤집지 않음!)
+    row = (H - 1) - gx
+    col = gy
+
+    lin = row * W + col  # linear index
+
+    def _density():
+        counts = np.bincount(lin, minlength=H * W).astype(np.float32).reshape(H, W)
+        counts = np.minimum(counts, float(max_density))
+        img = counts / float(max_density)
+        return (img * 255.0).astype(np.uint8)
+
+    def _height():
+        # z down(+) => "위로"는 -z
+        height = (-z).astype(np.float32)  # larger = higher
+        hmap = np.full((H, W), -np.inf, dtype=np.float32)
+        np.maximum.at(hmap.reshape(-1), lin, height)
+
+        # normalize using -z range
+        h_min = -z_max
+        h_max = -z_min
+        denom = max(h_max - h_min, 1e-6)
+        hmap = np.where(np.isfinite(hmap), hmap, h_min)
+        hmap = np.clip((hmap - h_min) / denom, 0.0, 1.0)
+        return (hmap * 255.0).astype(np.uint8)
+
+    def _intensity():
+        if pts.shape[1] != 4:
+            raise ValueError("intensity mode requires points shape (N,4).")
+        inten = pts[:, 3].astype(np.float32)
+        imap = np.zeros((H, W), dtype=np.float32)
+        np.maximum.at(imap.reshape(-1), lin, inten)
+
+        v = imap[imap > 0]
+        if v.size > 0:
+            lo, hi = np.percentile(v, 2), np.percentile(v, 98)
+            denom = max(hi - lo, 1e-6)
+            imap = np.clip((imap - lo) / denom, 0.0, 1.0)
+        else:
+            imap[:] = 0
+        return (imap * 255.0).astype(np.uint8)
+
+    if mode == "density":
+        return _density()
+    elif mode == "height":
+        return _height()
+    elif mode == "intensity":
+        return _intensity()
+    elif mode == "rgb":
+        d = _density()
+        h = _height()
+        it = _intensity() if pts.shape[1] == 4 else np.zeros((H, W), dtype=np.uint8)
+        # R=height, G=density, B=intensity
+        return np.stack([h, d, it], axis=2)
+    else:
+        raise ValueError("mode must be one of: density, height, intensity, rgb")
+
 def _save_shape_txt(path, shape_tuple):
     with open(path, 'w') as f:
         f.write(' '.join(str(int(s)) for s in shape_tuple))
@@ -114,6 +296,12 @@ def main(args):
     if RAW_POINTS:
         pc[:, 1] *= -1
         pc[:, 2] *= -1
+
+    # Generate BEV from raw point cloud
+    # bev = make_bev(pc, resolution=0.2, mode="rgb")
+    # cv2.imwrite("bev_rgb_raw.png", bev)
+    # print("saved bev_rgb_raw.png")
+
     pc_torch = torch.from_numpy(pc)
 
     model_pre.eval()
@@ -122,6 +310,18 @@ def main(args):
         if not args.no_cuda:
             pc_torch = pc_torch.cuda()
         pillars, coors_batch, npoints_per_pillar = model_pre(batched_pts=[pc_torch])
+        if args.bev:
+            # Generate BEV from pillarized point cloud
+            bev_rgb = pillars_to_bev_rgb(
+                pillars,
+                coors_batch,
+                npoints_per_pillar,
+                POINT_CLOUD_RANGE,
+                VOXEL_SIZE
+                )
+            cv2.imwrite("bev_rgb_pillars.png", bev_rgb)
+            print("saved bev_rgb_pillars.png")
+
         if SAVE_BIN:
             save_bins(pillars, coors_batch, npoints_per_pillar, dump_dir)
 
@@ -192,6 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
     parser.add_argument('--prefix', default='avikus')
+    parser.add_argument('--bev', action='store_true', help='Draw BEV from pillars')
     parser.add_argument('--dump_dir', required=True, default='dump_pre_io', help='directory to dump precomputed tensors')
     args = parser.parse_args()
 
