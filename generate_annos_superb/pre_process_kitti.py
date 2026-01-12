@@ -92,8 +92,6 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):   
         cur_info_dict['calib'] = calib_dict
 
         lidar_points = read_points(lidar_path)
-        lidar_points[:, -1] /= 255.0
-
         calib_path_yaml = os.path.join(data_root, data_key, "new_lidar.yaml")
         fallback_yaml = os.path.join(data_root, data_key, "lidar.yaml")
 
@@ -127,7 +125,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):   
         write_points(reduced_lidar_points, saved_reduced_points_name)
 
         if label:
-            label_path = os.path.join(data_root, data_key, "output", data_key, "label", f'{lidar_ts}.txt')
+            label_path = os.path.join(data_root, data_key, "label", f'{lidar_ts}.txt')
             annotation_dict = read_label(label_path)
             annotation_dimensions = annotation_dict['dimensions']
 

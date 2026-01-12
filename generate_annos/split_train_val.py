@@ -1,13 +1,22 @@
 import random
 import os
 import argparse
+import pdb
+from generate_label import EXCLUDE_PATH
 
 def main(args):
-    root_path = args.data_root
+    data_root = args.data_root
 
     # 파일에서 전체 목록 읽기
-    with open(os.path.join(root_path, "frame_list.txt"), "r") as f:
-        lines = [line.strip() for line in f.readlines() if line.strip()]
+    lines = []
+    for data_name in os.listdir(data_root):
+        if not os.path.isdir(os.path.join(data_root, data_name)) or data_name in  EXCLUDE_PATH:
+            continue
+        with open(os.path.join(data_root, data_name, "frame_list.txt"), "r") as f:
+            for line in f.readlines():
+                if line.strip():
+                    path = os.path.join(data_name, 'label', line.split()[-1]+'.txt')
+                    lines.append(path)
 
     # 고정 시드로 셔플
     random.seed(42)
@@ -26,18 +35,18 @@ def main(args):
     assert (num_test + num_val + num_train == total_lines)
 
     # 인덱스 재정렬
-    test_lines = [f"{i} {line.split()[1]}" for i, line in enumerate(test_lines)]
-    val_lines = [f"{i} {line.split()[1]}" for i, line in enumerate(val_lines)]
-    train_lines = [f"{i} {line.split()[1]}" for i, line in enumerate(train_lines)]
+    test_lines = [f"{i} {line}" for i, line in enumerate(test_lines)]
+    val_lines = [f"{i} {line}" for i, line in enumerate(val_lines)]
+    train_lines = [f"{i} {line}" for i, line in enumerate(train_lines)]
 
     # 결과 저장
-    with open(os.path.join(root_path, "test.txt"), "w") as f:
+    with open(os.path.join(data_root, "test.txt"), "w") as f:
         f.write("\n".join(test_lines))
 
-    with open(os.path.join(root_path, "val.txt"), "w") as f:
+    with open(os.path.join(data_root, "val.txt"), "w") as f:
         f.write("\n".join(val_lines))
 
-    with open(os.path.join(root_path, "train.txt"), "w") as f:
+    with open(os.path.join(data_root, "train.txt"), "w") as f:
         f.write("\n".join(train_lines))
 
     print("Done: test.txt / val.txt / train.txt")

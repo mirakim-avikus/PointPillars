@@ -16,7 +16,7 @@ def main(args):
     # 파일에서 전체 목록 읽기
     lines = []
     for dirpath, dirnames, filenames in os.walk(root_path):
-        if os.path.basename(dirpath) == "label" and "output" in dirpath.split(os.sep):
+        if os.path.basename(dirpath) == "label":
             for fname in filenames:
                 if fname.endswith('.txt'):
                     full_path = os.path.join(dirpath, fname)

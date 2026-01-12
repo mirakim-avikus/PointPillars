@@ -40,7 +40,7 @@ def judge_difficulty(annotation_dict, prefix='kitti'):
     return np.array(difficultys, dtype=np.int32)
 
 def find_closest_img(data_root, lidar_ts):
-    image_dir = os.path.join(data_root, 'camera')
+    image_dir = os.path.join(data_root, 'images')
     image_list = sorted(os.listdir(image_dir))
 
     image_ts_list = [int(name.split('.')[0]) for name in image_list]
@@ -61,7 +61,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
     sep = os.path.sep
     print(f"Processing {data_type} data..")
     if 'avikus' in prefix:
-        ids_file = os.path.join(CUR, '..', *data_root.split('/'), f'{data_type}.txt')
+        ids_file = os.path.join("/", *data_root.split('/'), f'{data_type}.txt')
     else:
         ids_file = os.path.join(CUR, '..', 'pointpillars', 'dataset', 'ImageSets', f'{data_type}.txt')        
     
@@ -78,12 +78,12 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
     for id in tqdm(ids):
         cur_info_dict={}
         if 'avikus' in prefix:
-            data_dir_idx = Path(data_root).name  # '005'
-            lidar_ts = id.split()[-1].split('.')[0]
-            image_id = find_closest_img(data_root, lidar_ts)
-            img_path = os.path.join(data_root, 'camera', f'{image_id}.jpg')
-            lidar_path = os.path.join(data_root, 'lidar', 'flippedData', f'{lidar_ts}.avikus.pcd')            
-            calib_path = os.path.join(data_root, f'calib_{data_dir_idx}.txt')
+            data_name = id.split()[-1].split('/')[0]  # '005'
+            lidar_ts = Path(id).name.split('.')[0]
+            image_id = find_closest_img(os.path.join(data_root, data_name), lidar_ts)
+            img_path = os.path.join(data_root, data_name, 'images', f'{image_id}.jpg')
+            lidar_path = os.path.join(data_root, data_name, 'pcd', f'{lidar_ts}.avikus.pcd')            
+            calib_path = os.path.join(data_root, data_name, f'calib_{data_name}.txt')
         else:
             img_path = os.path.join(data_root, split, 'image_2', f'{id}.png')
             lidar_path = os.path.join(data_root, split, 'velodyne', f'{id}.bin')
@@ -108,9 +108,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
 
         lidar_points = read_points(lidar_path)
         if 'avikus' in prefix:
-            lidar_points[:, -1] /= 255.0
-
-            calib_path_yaml = os.path.join(data_root, "lidar.yaml")
+            calib_path_yaml = os.path.join(data_root, data_name, "new_lidar.yaml")
             with open(calib_path_yaml, 'rb') as f:
                 calib_yaml_dict = yaml.safe_load(f)
 
@@ -119,8 +117,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
 
             R, _ = cv2.Rodrigues(rvec)
             tr_velo_to_cam = np.identity(4)
-            lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-            tr_velo_to_cam[:3, :3] = R@lidar2avikus
+            tr_velo_to_cam[:3, :3] = R
             tr_velo_to_cam[:3, -1] = tvec
         else:
             tr_velo_to_cam = calib_dict['Tr_velo_to_cam']
@@ -143,7 +140,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
 
         if label:            
             if 'avikus' in prefix:
-                label_path = os.path.join(data_root, 'annos_dir', f'{lidar_ts}.txt')
+                label_path = os.path.join(data_root, data_name, 'label', f'{lidar_ts}.txt')
             else:
                 label_path = os.path.join(data_root, split, 'label_2', f'{id}.txt')
                 tr_velo_to_cam = calib_dict['Tr_velo_to_cam']

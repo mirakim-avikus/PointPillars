@@ -330,7 +330,6 @@ class PointPillars(nn.Module):
             if mode == 'train':
                 score_inds = cur_bbox_cls_pred > self.score_thr
                 if score_inds.sum() == 0:
-                    print(f'every prediction is under {self.score_thr}!')
                     continue
             else:
                 score_inds = cur_bbox_cls_pred >= 0

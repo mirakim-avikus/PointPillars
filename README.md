@@ -1,13 +1,81 @@
 # [PointPillars: Fast Encoders for Object Detection from Point Clouds](https://arxiv.org/abs/1812.05784) 
 
-A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI) Detection. [[Zhihu](https://zhuanlan.zhihu.com/p/521277176)]
+Original Code : A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI) Detection. [[Zhihu](https://zhuanlan.zhihu.com/p/521277176)]
 
 - It can be run without installing [Spconv](https://github.com/traveller59/spconv), [mmdet](https://github.com/open-mmlab/mmdetection) or [mmdet3d](https://github.com/open-mmlab/mmdetection3d). 
 - Only one detection network (PointPillars) was implemented in this repo, so the code may be more easy to read. 
 - Sincere thanks for the great open-source architectures [mmcv](https://github.com/open-mmlab/mmcv), [mmdet](https://github.com/open-mmlab/mmdetection) and [mmdet3d](https://github.com/open-mmlab/mmdetection3d), which helps me to learn 3D detetion and implement this repo.
 
-## News
+## Data Setting
 
+데이터는 아래 2개의 소스로부터 확보한다.
+
+### 1) SuperbAI
+
+- **(1) 데이터 Export**
+  - SuperbAI 플랫폼에서 **Kitti data format**으로 export  
+  - 경로: `프로젝트 → 라벨 내보내기 → 다운로드 → Superb AI 포맷 다운로드`
+
+- **(2) 데이터 폴더 구조**
+  - `data_root` 안의 각 `data_name` 폴더 구조는 아래와 같다.
+
+    ```text
+    data_root
+    ├─ data_name_A
+    │  └─ 이미지, pcd, yaml
+    ├─ data_name_B
+    │  └─ 이미지, pcd, yaml
+    ├─ data_name_C
+    │  └─ ...
+    └─ zip
+    ```
+
+- **(3) Annotation 생성**
+  - 각 `data_name`의 zip을 unzip 후 아래 스크립트 실행
+    ```bash
+    cd generate_annos
+    ./cvat.sh
+    ```
+  - `./cvat.sh` 안의 `DATA_ROOT`를 `data_root`에 맞게 수정
+
+---
+
+### 2) CVAT
+
+- **(1) 데이터 Export**
+  - CVAT에서 **Kitti data format**으로 export  
+  - 경로:  
+    `프로젝트 → Menu → Export → Kitti Raw Format 1.0`
+
+- **(2) 데이터 폴더 구조**
+  - `data_root` 안의 각 `data_name` 폴더 구조는 아래와 같다.
+
+    ```text
+    data_root
+    ├─ data_name_A
+    │  └─ 이미지, pcd, yaml, zip
+    ├─ data_name_B
+    │  └─ 이미지, pcd, yaml, zip
+    ├─ data_name_C
+    │  └─ ...
+    ```
+
+- **(3) Annotation 생성**
+  - zip을 unzip 후 아래 스크립트 실행
+    ```bash
+    cd generate_annos_superb
+    ./superb.sh
+    ```
+  - `DATA_ROOT`를 `data_root`에 맞게 수정
+
+---
+
+### TODO
+- CVAT과 SuperbAI 데이터를 한 번에 병합하는 파이프라인 구성
+
+
+---
+### News
 - **2025-02** Making PointPillars a python package out of the code is supported.
 - **2024-04** Exporting PointPillars to ONNX & TensorRT is supported on branch [feature/deployment](https://github.com/zhulf0804/PointPillars/tree/feature/deployment).
 
