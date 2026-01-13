@@ -52,11 +52,7 @@ class Loss(nn.Module):
         focal_weight = alpha * targets + (1 - alpha) * (1 - targets)
         focal_weight = focal_weight * (1 - pt).pow(gamma)
         cls_loss = focal_weight * bce_loss
-        if num_cls_pos > 0:
-            cls_loss = cls_loss.sum() / num_cls_pos
-        else:
-            print("[Warning] No positive samples in batch → cls_loss = 0")
-            cls_loss = cls_loss.sum() * 0.0
+        cls_loss = cls_loss.mean()
         
         # 2. regression loss
         if bbox_pred.size(0) > 0:
@@ -67,15 +63,14 @@ class Loss(nn.Module):
             reg_loss += self.smooth_l1_loss(sin_diff, torch.zeros_like(sin_diff)).sum() / sin_diff.size(0)
         else:
             print("[Warning] No bbox regression targets → reg_loss = 0")
-            reg_loss = torch.tensor(0.0, device=bbox_pred.device, requires_grad = True)
-
+            reg_loss = bbox_pred.sum() * 0.0
 
         # 3. direction cls loss
         if bbox_dir_cls_pred.size(0) > 0:
             dir_cls_loss = self.dir_cls(bbox_dir_cls_pred, batched_dir_labels)
         else:
             print("[Warning] No dir classification targets → dir_cls_loss = 0")
-            dir_cls_loss = torch.tensor(0.0, device=bbox_dir_cls_pred.device, requires_grad = True)
+            dir_cls_loss = bbox_dir_cls_pred.sum() * 0.0
 
         # 4. total loss
         total_loss = self.cls_w * cls_loss + self.reg_w * reg_loss + self.dir_w * dir_cls_loss
