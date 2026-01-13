@@ -1,9 +1,7 @@
 import numpy as np
 import os
-import torch
 from torch.utils.data import Dataset
-import yaml
-import cv2
+from tqdm import tqdm
 
 import sys
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -63,15 +61,24 @@ class Avikus(Dataset):
         'buoy' : 0.4,
     }
 
-    def __init__(self, data_root, split, point_cloud_range, pts_prefix='velodyne_reduced'):
+    def __init__(self, data_root, split, point_cloud_range, pts_prefix='velodyne_reduced', min_pts_after_filter=10):
         assert split in ['train', 'val', 'trainval', 'test']
         self.data_root = data_root
         self.split = split
         self.pts_prefix = pts_prefix
+        self.min_pts_after_filter = min_pts_after_filter
         self.data_infos = read_pickle(os.path.join(data_root, f'avikus_infos_{split}.pkl'))
         self.sorted_ids = list(self.data_infos.keys())
+        self.valid_ids = self._build_valid_ids(point_cloud_range)
+
         db_infos = read_pickle(os.path.join(data_root, 'avikus_dbinfos_train.pkl'))
         db_infos = self.filter_db(db_infos)
+
+        print(
+            f"[Avikus] split={split} "
+            f"total={len(self.sorted_ids)} → valid={len(self.valid_ids)} "
+            f"(min_pts_after_filter={self.min_pts_after_filter})"
+        )
 
         db_sampler = {}
         for cat_name in self.CLASSES:
@@ -96,6 +103,33 @@ class Avikus(Dataset):
             object_range_filter=point_cloud_range         
         )
 
+    def _build_valid_ids(self, point_cloud_range):
+        valid_ids = []
+
+        for k in tqdm(self.sorted_ids, desc=f"[{self.split}] filtering valid ids"):
+            info = self.data_infos[k]
+
+            velodyne_path = info['velodyne_path'].replace('velodyne', self.pts_prefix)
+            pts_path = os.path.join(self.data_root, velodyne_path)
+
+            try:
+                pts = read_points(pts_path)
+            except Exception:
+                continue
+
+            if pts is None or pts.shape[0] == 0:
+                continue
+
+            pts[:, -1] = pts[:, -1] / 255.0
+
+            tmp_dict = {'pts': pts}
+            tmp_dict = point_range_filter(tmp_dict, point_range=point_cloud_range)
+
+            if tmp_dict['pts'].shape[0] >= self.min_pts_after_filter:
+                valid_ids.append(k)
+
+        return valid_ids
+
     def filter_by_occ_trunc(self, annos_info, occ_thr=2, trunc_thr=1):
         occluded = annos_info['occluded']
         truncated = annos_info['truncated']
@@ -117,7 +151,7 @@ class Avikus(Dataset):
         return db_infos
 
     def __getitem__(self, index):
-        data_info = self.data_infos[self.sorted_ids[index]]
+        data_info = self.data_infos[self.valid_ids[index]]
         image_info, calib_info, annos_info = \
             data_info['image'], data_info['calib'], data_info['annos']
     
@@ -156,12 +190,11 @@ class Avikus(Dataset):
         #     data_dict = data_augment(self.CLASSES, self.data_root, data_dict, self.data_aug_config)
         # else:
         data_dict = point_range_filter(data_dict, point_range=self.data_aug_config['point_range_filter'])
-        data_dict = object_range_filter(data_dict, object_range=self.data_aug_config['object_range_filter'])
 
         return data_dict
 
     def __len__(self):
-        return len(self.data_infos)
+        return len(self.valid_ids)
  
 
 if __name__ == '__main__':

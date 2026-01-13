@@ -140,17 +140,33 @@ def read_calib(file_path, extend_matrix=True):
 
 def read_label(file_path):
     with open(file_path, 'r') as f:
-        lines = f.readlines()
-    lines = [line.strip().split(' ') for line in lines]
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+
+    # NEGATIVE SAMPLE (empty GT)
+    if len(lines) == 0:
+        return {
+            'name': np.zeros((0,), dtype='<U32'),
+            'truncated': np.zeros((0,), dtype=np.float32),
+            'occluded': np.zeros((0,), dtype=np.float32),
+            'alpha': np.zeros((0,), dtype=np.float32),
+            'bbox': np.zeros((0, 4), dtype=np.float32),
+            'dimensions': np.zeros((0, 3), dtype=np.float32),
+            'location': np.zeros((0, 3), dtype=np.float32),
+            'rotation_y': np.zeros((0,), dtype=np.float32),
+        }
+
+    # POSITIVE SAMPLE
+    lines = [line.split(' ') for line in lines]
+
     annotation = {}
-    annotation['name'] = np.array([line[0] for line in lines])
+    annotation['name'] = np.array([line[0] for line in lines], dtype='<U32')
     annotation['truncated'] = np.array([line[1] for line in lines], dtype=np.float32)
-    annotation['occluded'] = np.array([float(line[2]) for line in lines], dtype=np.float32)
+    annotation['occluded'] = np.array([line[2] for line in lines], dtype=np.float32)
     annotation['alpha'] = np.array([line[3] for line in lines], dtype=np.float32)
     annotation['bbox'] = np.array([line[4:8] for line in lines], dtype=np.float32)
-    annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32) # lwh form
+    annotation['dimensions'] = np.array([line[8:11] for line in lines], dtype=np.float32)
     annotation['location'] = np.array([line[11:14] for line in lines], dtype=np.float32)
-    annotation['rotation_y'] = -1 * np.array([line[14] for line in lines], dtype=np.float32)
+    annotation['rotation_y'] = -1.0 * np.array([line[14] for line in lines], dtype=np.float32)
     return annotation
 
 
