@@ -39,9 +39,9 @@ def judge_difficulty(annotation_dict, prefix='kitti'):
             difficultys.append(difficulty)
     return np.array(difficultys, dtype=np.int32)
 
-def find_closest_img(data_root, lidar_ts):
-    image_dir = os.path.join(data_root, 'images')
-    image_list = sorted(os.listdir(image_dir))
+def find_closest_img(data_root, data_key, lidar_ts):
+    image_dir = os.path.join(data_root, data_key, 'sample')
+    image_list = sorted([img for img in os.listdir(image_dir) if img.endswith('.jpg')])
 
     image_ts_list = [int(name.split('.')[0]) for name in image_list]
     min_diff = float('inf')
@@ -80,7 +80,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
         if 'avikus' in prefix:
             data_name = id.split()[-1].split('/')[0]  # '005'
             lidar_ts = Path(id).name.split('.')[0]
-            image_id = find_closest_img(os.path.join(data_root, data_name), lidar_ts)
+            image_id = find_closest_img(data_root, data_name, lidar_ts)
             img_path = os.path.join(data_root, data_name, 'images', f'{image_id}.jpg')
             lidar_path = os.path.join(data_root, data_name, 'pcd', f'{lidar_ts}.avikus.pcd')            
             calib_path = os.path.join(data_root, data_name, f'calib_{data_name}.txt')

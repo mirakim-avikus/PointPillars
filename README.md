@@ -30,13 +30,6 @@ Original Code : A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI
     └─ zip
     ```
 
-- **(3) Annotation 생성**
-  - 각 `data_name`의 zip을 unzip 후 아래 스크립트 실행
-    ```bash
-    cd generate_annos
-    ./cvat.sh
-    ```
-  - `./cvat.sh` 안의 `DATA_ROOT`를 `data_root`에 맞게 수정
 
 ---
 
@@ -59,19 +52,14 @@ Original Code : A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI
     ├─ data_name_C
     │  └─ ...
     ```
-
-- **(3) Annotation 생성**
-  - zip을 unzip 후 아래 스크립트 실행
+---
+### 3) 학습을 위한 Annotation 생성
+  - CVAT과 SuperbAI에서 다운로드한 zip들을 unzip 후 아래 스크립트 실행
     ```bash
-    cd generate_annos_superb
-    ./superb.sh
+    cd generate_annos_all
+    ./annos.sh
     ```
   - `DATA_ROOT`를 `data_root`에 맞게 수정
-
----
-
-### TODO
-- CVAT과 SuperbAI 데이터를 한 번에 병합하는 파이프라인 구성
 
 
 ---
