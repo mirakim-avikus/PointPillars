@@ -119,7 +119,7 @@ def main(args):
                                     num_workers=args.num_workers,
                                     shuffle=False)
 
-    num_cls = sorted(CLASSES.values())[-1] + 1
+    num_cls = len(CLASSES)
     if not args.no_cuda:
         pointpillars = PointPillars(nclasses=num_cls, point_cloud_range=point_cloud_range, voxel_size=voxel_size, prefix='avikus').cuda()
     else:
