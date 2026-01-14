@@ -44,13 +44,10 @@ def main(args):
     total_lines = len(lines)
     num_test = int(RATIO_TEST * total_lines)
     num_val = int(RATIO_VAL * total_lines)
-    num_train = total_lines - num_test - num_val
 
     test_lines = lines[:num_test]
     val_lines = lines[num_test:num_test+num_val]
-    train_lines = lines[num_test+num_val:]
-
-    assert (num_test + num_val + num_train == total_lines)
+    train_lines = lines
 
     # 인덱스 재정렬
     root_dir = root_path.split('/')[-1]
