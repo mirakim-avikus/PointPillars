@@ -24,6 +24,7 @@ CLASSES = Avikus.CLASSES
 ID2NAME = {int(v): k for k, v in CLASSES.items()}
 IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS 
 VISUALIZE = False
+POINT_CLOUD_RANGE = [5, -72., -10., 180., 72., 30.]
 
 def find_closest_lidar(lidar_dir, data_name):
     lidar_list = sorted([lidar for lidar in os.listdir(lidar_dir) if lidar.endswith('.pcd')])
@@ -99,8 +100,7 @@ def get_parameters(calib_path_yaml, calib_info):
 
 def main(args):
     setup_seed()
-
-    point_cloud_range=[5, -72., -10., 180., 72., 30.]
+    point_cloud_range=POINT_CLOUD_RANGE
     pcd_limit_range = np.array(point_cloud_range, dtype=np.float32)
     z_span = point_cloud_range[5] - point_cloud_range[2]
     voxel_size=[0.25, 0.25, z_span]
