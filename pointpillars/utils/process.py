@@ -608,23 +608,38 @@ def keep_bbox_from_lidar_range(result, pcd_limit_range):
     return: dict(lidar_bboxes, labels, scores, bboxes2d, camera_bboxes)
     '''
     lidar_bboxes, labels, scores = result['lidar_bboxes'], result['labels'], result['scores']
-    if 'bboxes2d' not in result:
-        result['bboxes2d'] = np.zeros_like(lidar_bboxes[:, :4])
-    if 'camera_bboxes' not in result:
-        result['camera_bboxes'] = np.zeros_like(lidar_bboxes)
-    bboxes2d, camera_bboxes = result['bboxes2d'], result['camera_bboxes']
-    flag1 = lidar_bboxes[:, :3] > pcd_limit_range[:3][None, :] # (n, 3)
-    flag2 = lidar_bboxes[:, :3] < pcd_limit_range[3:][None, :] # (n, 3)
-    keep_flag = np.all(flag1, axis=-1) & np.all(flag2, axis=-1)
+    if lidar_bboxes is None or lidar_bboxes.size == 0:
+        return {
+            'lidar_bboxes': np.zeros((0, 7), dtype=np.float32),
+            'labels': np.zeros((0,), dtype=np.int64),
+            'scores': np.zeros((0,), dtype=np.float32),
+            'bboxes2d': np.zeros((0, 4), dtype=np.float32),
+            'camera_bboxes': np.zeros((0, 7), dtype=np.float32),
+        }
     
-    result = {
-        'lidar_bboxes': lidar_bboxes[keep_flag],
+    lidar_bboxes = lidar_bboxes.reshape(-1, 7)
+    labels = np.asarray(result['labels']).reshape(-1)
+    scores = np.asarray(result['scores']).reshape(-1)
+
+    bboxes2d = result.get(
+        'bboxes2d',
+        np.zeros((lidar_bboxes.shape[0], 4), dtype=np.float32)
+    )
+    camera_bboxes = result.get(
+        'camera_bboxes',
+        np.zeros((lidar_bboxes.shape[0], 7), dtype=np.float32)
+    )
+    flag1 = lidar_bboxes[:, :3] > pcd_limit_range[:3][None, :]
+    flag2 = lidar_bboxes[:, :3] < pcd_limit_range[3:][None, :]
+    keep_flag = np.all(flag1, axis=1) & np.all(flag2, axis=1)
+
+    return {
+        'lidar_bboxes': lidar_bboxes[keep_flag].reshape(-1, 7),
         'labels': labels[keep_flag],
         'scores': scores[keep_flag],
         'bboxes2d': bboxes2d[keep_flag],
         'camera_bboxes': camera_bboxes[keep_flag]
     }
-    return result
 
 
 def points_in_bboxes_v2(points, r0_rect, tr_velo_to_cam, dimensions, location, rotation_y, name):
