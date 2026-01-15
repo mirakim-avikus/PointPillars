@@ -122,6 +122,7 @@ def project_lidar_to_image(lidar_points, img_path, Rt, K, D):
     return points_distorted, K, Rt
 
 def main(args):
+    args.data_root = os.path.normpath(args.data_root)
     data_root = args.data_root
     for data_name in os.listdir(data_root):
         if data_name in EXCLUDE_PATH or not os.path.isdir(os.path.join(data_root, data_name)):

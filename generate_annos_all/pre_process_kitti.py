@@ -198,6 +198,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
 
 
 def main(args):
+    args.data_root = os.path.normpath(args.data_root)
     data_root = args.data_root
     prefix = args.prefix
 

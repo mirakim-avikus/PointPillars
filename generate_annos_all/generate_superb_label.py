@@ -119,6 +119,7 @@ def read_calib(calib_path):
     return Rt, K, D
 
 def main(args):
+    args.data_root = os.path.normpath(args.data_root)
     ROOT_PREFIX = args.data_root
     LABEL_META_PATH =  os.path.join(ROOT_PREFIX,"meta/" )
 

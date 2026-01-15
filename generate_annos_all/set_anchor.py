@@ -3,6 +3,7 @@ import pickle
 import argparse
 
 def main(args):
+    args.data_root = os.path.normpath(args.data_root)
     root_path = args.data_root
     with open(os.path.join(root_path, "avikus_dbinfos_train.pkl"), 'rb') as f :
         data = pickle.load(f)

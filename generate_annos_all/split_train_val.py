@@ -12,6 +12,7 @@ def shorten_path(path, root_dir):
     return path
 
 def main(args):
+    args.data_root = os.path.normpath(args.data_root)
     root_path = args.data_root  # data 전체의 root path
 
     # 파일에서 전체 목록 읽기

@@ -20,6 +20,7 @@ def calib_dict_to_kitti(calib):
     return '\n'.join(lines)
 
 def main(args):
+    args.data_root = os.path.normpath(args.data_root)
     data_root = args.data_root
     data_key_excluded = ['avikus_gt_database', 'training', 'testing']
     for data_key in os.listdir(data_root):
