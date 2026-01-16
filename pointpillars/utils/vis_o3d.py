@@ -72,24 +72,31 @@ def vis_pc(pc, bboxes=None, labels=None):
     '''
     if isinstance(pc, np.ndarray):
         pc = npy2ply(pc)
-    
+
+    # ✅ 모든 포인트 색을 진하게 통일 (회색)
+    n = np.asarray(pc.points).shape[0]
+    pc.colors = o3d.utility.Vector3dVector(
+        np.tile([0.7, 0.7, 0.7], (n, 1))
+    )
+
     mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-    size=10, origin=[0, 0, 0])
+        size=10, origin=[0, 0, 0]
+    )
 
     if bboxes is None:
         vis_core([pc, mesh_frame])
         return
-    
+
     if len(bboxes.shape) == 2:
         bboxes = bbox3d2corners(bboxes)
-    
+
     vis_objs = [pc, mesh_frame]
     for i in range(len(bboxes)):
         bbox = bboxes[i]
         if labels is None:
             color = [1, 1, 0]
         else:
-            if labels[i] >= 0 and labels[i] < 3:
+            if 0 <= labels[i] < 3:
                 color = COLORS[labels[i]]
             else:
                 color = COLORS[-1]
