@@ -73,7 +73,7 @@ class Avikus(Dataset):
         db_infos = self.filter_db(db_infos)
 
         db_sampler = {}
-        for cat_name in self.CLASSES:
+        for cat_name in db_infos.keys():
             db_sampler[cat_name] = BaseSampler(db_infos[cat_name], shuffle=True)
         self.data_aug_config=dict(
             db_sampler=dict(
@@ -109,7 +109,7 @@ class Avikus(Dataset):
             db_infos[k] = [item for item in v if item['difficulty'] != -1]
 
         filter_thrs = dict(jetski=10, smallboat=10, mediumboat=20, **{"c-marker": 10}, yacht=20, pole=8, dinghyboat=10, bigboat=40, bridgepillar=20, buoy=5)
-        for cat in self.CLASSES:
+        for cat in db_infos.keys():
             filter_thr = filter_thrs[cat]
             db_infos[cat] = [item for item in db_infos[cat] if item['num_points_in_gt']>= filter_thr]
         
