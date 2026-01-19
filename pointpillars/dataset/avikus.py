@@ -117,8 +117,8 @@ class Avikus(Dataset):
 
     def __getitem__(self, index):
         data_info = self.data_infos[self.sorted_ids[index]]
-        image_info, calib_info, annos_info, imu_info = \
-            data_info['image'], data_info['calib'], data_info['annos'], data_info['imu']
+        image_info, calib_info, annos_info, imu_info, pcd_info = \
+            data_info['image'], data_info['calib'], data_info['annos'], data_info['imu'], data_info['velodyne_path']
     
         # point cloud input
         velodyne_path = data_info['velodyne_path'].replace('velodyne', self.pts_prefix)
@@ -147,6 +147,7 @@ class Avikus(Dataset):
             'difficulty': np.atleast_1d(annos_info['difficulty']),
             'image_info': image_info,
             'calib_info': calib_info,
+            'pcd_info': pcd_info,
             'location': annos_location,
             'dimension': annos_dimension,
             'rotation_y': rotation_y
