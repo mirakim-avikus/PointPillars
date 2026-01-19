@@ -446,7 +446,7 @@ class PointPillars(nn.Module):
                                                 bbox_dir_cls_pred=bbox_dir_cls_pred, 
                                                 batched_anchors=batched_anchors,
                                                 mode=mode)
-            return results
+            return pillars, coors_batch, npoints_per_pillar, results
 
         elif mode == 'test':
             results = self.get_predicted_bboxes(bbox_cls_pred=bbox_cls_pred, 
