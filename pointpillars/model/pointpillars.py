@@ -95,19 +95,18 @@ class PillarEncoder(nn.Module):
         pooling_features = torch.max(features, dim=-1)[0] # (p1 + p2 + ... + pb, out_channels)
 
         # 6. pillar scatter
-        batched_canvas = []
-        for i in range(bs):
-            cur_coors_idx = coors_batch[:, 0] == i
-            cur_coors = coors_batch[cur_coors_idx, :]
-            cur_features = pooling_features[cur_coors_idx]
+        b = coors_batch[:, 0].long()
+        x = coors_batch[:, 1].long()
+        y = coors_batch[:, 2].long()
 
-            canvas = torch.zeros((self.x_l, self.y_l, self.out_channel), dtype=cur_features.dtype, device=device)
-            canvas = canvas.to(cur_features.dtype)
-            if sum(cur_coors_idx) > 0:
-                canvas[cur_coors[:, 1], cur_coors[:, 2]] = cur_features
-            canvas = canvas.permute(2, 1, 0).contiguous()
-            batched_canvas.append(canvas)
-        batched_canvas = torch.stack(batched_canvas, dim=0) # (bs, in_channel, self.y_l, self.x_l)
+        # output: (bs, C, y_l, x_l)
+        batched_canvas = torch.zeros(
+            (bs, self.out_channel, self.y_l, self.x_l),
+            device=device,
+            dtype=pooling_features.dtype
+        )
+
+        batched_canvas[b, :, y, x] = pooling_features
         return batched_canvas
 
 
