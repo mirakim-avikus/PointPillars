@@ -776,3 +776,229 @@ def get_frustum(bbox_image, C, near_clip=0.001, far_clip=100):
                             axis=0)  # [8, 2]
     ret_xyz = np.concatenate([ret_xy, z_points], axis=1)
     return ret_xyz
+
+def _lidar_box_to_corners_xy(bboxes):
+    """
+    bboxes: (N, 7) [x, y, z, l, w, h, yaw] in lidar coords (x fwd, y left)
+    return: corners (N, 4, 2) in (x, y)
+    """
+    if bboxes is None or len(bboxes) == 0:
+        return np.zeros((0, 4, 2), dtype=np.float32)
+
+    b = np.asarray(bboxes, dtype=np.float32)
+    cx, cy = b[:, 0], b[:, 1]
+    l, w = b[:, 3], b[:, 4]
+    yaw = -b[:, 6]
+
+    # local corners in box frame: (front-left, front-right, rear-right, rear-left)
+    # x axis = forward, y axis = right
+    x_c = np.stack([ l/2,  l/2, -l/2, -l/2], axis=1)  # (N,4)
+    y_c = np.stack([-w/2,  w/2,  w/2, -w/2], axis=1)
+
+    c = np.cos(yaw)[:, None]
+    s = np.sin(yaw)[:, None]
+
+    # rotate + translate
+    x_rot = x_c * c - y_c * s
+    y_rot = x_c * s + y_c * c
+
+    corners = np.stack([x_rot + cx[:, None], y_rot + cy[:, None]], axis=2)  # (N,4,2)
+    return corners
+
+def _xy_to_bev_rc(xy, pc_range, voxel_size):
+    """
+    xy: (...,2) in meters
+    return: (...,2) in (row, col) pixel coords for BEV image (H,W)
+    """
+    x_min, y_min, z_min, x_max, y_max, z_max = pc_range
+    vx, vy, vz = voxel_size
+
+    H = int((x_max - x_min) / vx)
+    W = int((y_max - y_min) / vy)
+
+    x = xy[..., 0]
+    y = xy[..., 1]
+
+    px = (x - x_min) / vx
+    py = (y - y_min) / vy
+
+    # row: up = forward, so invert x axis to image row
+    row = (H - 1) - px
+    col = (W - 1) - py
+    return np.stack([row, col], axis=-1), H, W
+
+def draw_bboxes_on_bev(
+    bev_bgr: np.ndarray,
+    bboxes_lidar: np.ndarray,
+    pc_range,
+    voxel_size,
+    labels=None,
+    scores=None,
+    thickness=2,
+    draw_heading=True,
+    score_text=True,
+    gt=False
+):
+    """
+    bev_bgr: (H,W,3) uint8
+    bboxes_lidar: (N,7) [x,y,z,l,w,h,yaw]
+    """
+    if bboxes_lidar is None or len(bboxes_lidar) == 0:
+        return bev_bgr
+
+    img = bev_bgr.copy()
+    corners_xy = _lidar_box_to_corners_xy(bboxes_lidar)  # (N,4,2)
+    rc, H, W = _xy_to_bev_rc(corners_xy, pc_range, voxel_size)  # (N,4,2) row/col float
+
+    # simple color palette by label
+    palette = [
+        (0, 255, 255), (0, 255, 0), (255, 0, 0),
+        (255, 0, 255), (0, 128, 255), (255, 255, 0),
+        (180, 180, 255), (255, 180, 180)
+    ]
+
+    if labels is None:
+        labels = np.zeros((len(bboxes_lidar),), dtype=np.int32)
+    labels = np.asarray(labels).astype(np.int32)
+
+    if scores is not None:
+        scores = np.asarray(scores).astype(np.float32)
+
+    # center -> heading line endpoint
+    centers_xy = np.asarray(bboxes_lidar[:, :2], dtype=np.float32)  # (N,2)
+    centers_rc, _, _ = _xy_to_bev_rc(centers_xy, pc_range, voxel_size)  # (N,2)
+    yaws = np.asarray(bboxes_lidar[:, 6], dtype=np.float32)
+    lengths = np.asarray(bboxes_lidar[:, 3], dtype=np.float32)
+
+    for i in range(len(bboxes_lidar)):
+        color = palette[labels[i] % len(palette)]
+
+        pts_rc = rc[i]  # (4,2) row/col
+        # convert to int image points (x=col, y=row)
+        pts = np.stack([pts_rc[:, 1], pts_rc[:, 0]], axis=1)  # (4,2) (col,row)
+        pts = np.round(pts).astype(np.int32)
+
+        # clip check (optional)
+        if np.all((pts[:, 0] < 0) | (pts[:, 0] >= W) | (pts[:, 1] < 0) | (pts[:, 1] >= H)):
+            continue
+
+        cv2.polylines(img, [pts], isClosed=True, color=color, thickness=thickness, lineType=cv2.LINE_AA)
+
+        if draw_heading:
+            # heading direction in lidar xy: (cos(yaw), sin(yaw)) points to +x front
+            head_xy = centers_xy[i] + np.array([np.cos(yaws[i]), -np.sin(yaws[i])], dtype=np.float32) * (0.5 * lengths[i])
+            head_rc, _, _ = _xy_to_bev_rc(head_xy[None, :], pc_range, voxel_size)
+            c = np.round(np.array([centers_rc[i, 1], centers_rc[i, 0]])).astype(np.int32)  # (col,row)
+            h = np.round(np.array([head_rc[0, 1], head_rc[0, 0]])).astype(np.int32)
+            cv2.line(img, tuple(c), tuple(h), color=color, thickness=thickness, lineType=cv2.LINE_AA)
+
+        if score_text and scores is not None:
+            if gt:
+                text = f"{labels[i]}"
+            else:
+                text = f"{labels[i]}:{scores[i]:.2f}"
+            org = (int(np.clip(pts[:, 0].min(), 0, W-1)), int(np.clip(pts[:, 1].min(), 0, H-1)))
+            cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+    return img
+
+def pillars_to_bev_rgb_with_bboxes(
+    pillars,
+    coors,
+    npoints,
+    pc_range,
+    voxel_size,
+    bboxes_lidar=None,
+    labels=None,
+    scores=None,
+    batch_idx=0,
+    max_density=32,
+    gt=False
+):
+    """
+    배치 혼합 방지: coors[:,0] == batch_idx 인 것만 사용해서 BEV 생성
+    그리고 BEV 위에 bbox를 그려서 반환.
+    """
+    # move to cpu numpy
+    pillars = pillars.detach().cpu().numpy()
+    coors = coors.detach().cpu().numpy()
+    npoints = npoints.detach().cpu().numpy()
+
+    x_min, y_min, z_min, x_max, y_max, z_max = pc_range
+    vx, vy, vz = voxel_size
+    H = int((x_max - x_min) / vx)
+    W = int((y_max - y_min) / vy)
+
+    bev_h = np.zeros((H, W), dtype=np.float32)
+    bev_d = np.zeros((H, W), dtype=np.float32)
+    bev_i = np.zeros((H, W), dtype=np.float32)
+
+    # ✅ batch filter
+    mask = (coors[:, 0].astype(np.int32) == int(batch_idx))
+    idxs = np.where(mask)[0]
+
+    for k in idxs:
+        x_idx = int(coors[k][1])  # voxel x index within pc_range grid (PointPillars convention)
+        y_idx = int(coors[k][2])
+
+        row = H - 1 - x_idx
+        col = W - 1 - y_idx
+
+        if row < 0 or row >= H or col < 0 or col >= W:
+            continue
+
+        Ni = int(npoints[k])
+        if Ni <= 0:
+            continue
+
+        pts = pillars[k, :Ni]  # (Ni,4)
+        if pts.shape[0] == 0:
+            continue
+
+        height = (pts[:, 2]).max()
+        density = min(Ni, max_density) / max_density
+        intensity = pts[:, 3].max()
+
+        bev_h[row, col] = max(bev_h[row, col], height)
+        bev_d[row, col] = max(bev_d[row, col], density)
+        bev_i[row, col] = max(bev_i[row, col], intensity)
+
+    # robust normalize height
+    v = bev_h[np.isfinite(bev_h)]
+    if v.size > 0:
+        lo, hi = np.percentile(v, 2), np.percentile(v, 98)
+        bev_h = np.clip((bev_h - lo) / (hi - lo + 1e-6), 0, 1)
+    else:
+        bev_h[:] = 0
+
+    # robust normalize intensity
+    v = bev_i[bev_i > 0]
+    if v.size > 0:
+        lo, hi = np.percentile(v, 2), np.percentile(v, 98)
+        bev_i = np.clip((bev_i - lo) / (hi - lo + 1e-6), 0, 1)
+    else:
+        bev_i[:] = 0
+
+    bev_rgb = np.stack([
+        (bev_h * 255).astype(np.uint8),   # R
+        (bev_d * 255).astype(np.uint8),   # G
+        (bev_i * 255).astype(np.uint8)    # B
+    ], axis=2)
+
+    # OpenCV는 BGR이 편하니 변환
+    bev_bgr = bev_rgb[..., ::-1].copy()
+
+    if bboxes_lidar is not None and len(bboxes_lidar) > 0:
+        bev_bgr = draw_bboxes_on_bev(
+            bev_bgr,
+            bboxes_lidar=bboxes_lidar,
+            pc_range=pc_range,
+            voxel_size=voxel_size,
+            labels=labels,
+            scores=scores,
+            thickness=2,
+            draw_heading=True,
+            score_text=(scores is not None),
+            gt=gt
+        )
+
+    return bev_bgr
