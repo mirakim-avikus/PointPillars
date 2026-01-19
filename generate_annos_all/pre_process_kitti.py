@@ -41,7 +41,7 @@ def judge_difficulty(annotation_dict, is_avikus):
     return np.array(difficultys, dtype=np.int32)
 
 def find_closest_img(data_root, data_key, lidar_ts):
-    image_dir = os.path.join(data_root, data_key, 'sample')
+    image_dir = os.path.join(data_root, data_key, 'images')
     image_list = sorted([img for img in os.listdir(image_dir) if img.endswith('.jpg')])
 
     image_ts_list = [int(name.split('.')[0]) for name in image_list]
