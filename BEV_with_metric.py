@@ -27,6 +27,7 @@ IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS
 SCORE_THRESHOLD = 0.1
 VISUALIZE = False
 POINT_CLOUD_RANGE = [5, -72., -10., 180., 72., 30.]
+BEV = True
 
 def iou_bev_vec(cur_np: np.ndarray, boxes_np: np.ndarray) -> np.ndarray:
     """
@@ -213,61 +214,59 @@ def main(args):
                     keep = np.array(keep, dtype=np.int64)
                     lidar_bboxes, scores, labels = boxes[keep], scores[keep], labels[keep]
 
-                bev_GT = pillars_to_bev_rgb_with_bboxes(
-                    pillars,
-                    coors_batch,
-                    npoints_per_pillar,
-                    point_cloud_range,
-                    voxel_size,
-                    bboxes_lidar=batched_gt_bboxes[i].cpu().numpy(),
-                    labels=batched_labels[i].cpu().numpy(),
-                    scores=scores,
-                    batch_idx=i,
-                    gt=True
-                )
+                if BEV:
+                    bev_GT = pillars_to_bev_rgb_with_bboxes(
+                        pillars,
+                        coors_batch,
+                        npoints_per_pillar,
+                        point_cloud_range,
+                        voxel_size,
+                        bboxes_lidar=batched_gt_bboxes[i].cpu().numpy(),
+                        labels=batched_labels[i].cpu().numpy(),
+                        scores=scores,
+                        batch_idx=i,
+                        gt=True
+                    )
 
-                # bev pred
-                bev_pred = pillars_to_bev_rgb_with_bboxes(
-                    pillars,
-                    coors_batch,
-                    npoints_per_pillar,
-                    point_cloud_range,
-                    voxel_size,
-                    bboxes_lidar=lidar_bboxes,
-                    labels=labels,
-                    scores=scores,
-                    batch_idx=i,
-                )
-                # bev points
-                bev_points = pillars_to_bev_rgb_with_bboxes(
-                    pillars,
-                    coors_batch,
-                    npoints_per_pillar,
-                    point_cloud_range,
-                    voxel_size,
-                    bboxes_lidar=np.zeros((batched_gt_bboxes[i].shape[0], 7)),
-                    labels=np.zeros((batched_gt_bboxes[i].shape[0])),
-                    scores=np.zeros((batched_gt_bboxes[i].shape[0])),
-                    batch_idx=i,
-                )
-                cv2.imwrite(f"{bev_points_dir}/{pcd_ts}.png", bev_points)
+                    # bev pred
+                    bev_pred = pillars_to_bev_rgb_with_bboxes(
+                        pillars,
+                        coors_batch,
+                        npoints_per_pillar,
+                        point_cloud_range,
+                        voxel_size,
+                        bboxes_lidar=lidar_bboxes,
+                        labels=labels,
+                        scores=scores,
+                        batch_idx=i,
+                    )
+                    # bev points
+                    bev_points = pillars_to_bev_rgb_with_bboxes(
+                        pillars,
+                        coors_batch,
+                        npoints_per_pillar,
+                        point_cloud_range,
+                        voxel_size,
+                        bboxes_lidar=np.zeros((batched_gt_bboxes[i].shape[0], 7)),
+                        labels=np.zeros((batched_gt_bboxes[i].shape[0])),
+                        scores=np.zeros((batched_gt_bboxes[i].shape[0])),
+                        batch_idx=i,
+                    )
+                    cv2.imwrite(f"{bev_points_dir}/{pcd_ts}.png", bev_points)
 
-                # vis_pc(batched_pts[i].cpu().numpy(), bboxes=batched_gt_bboxes[i].cpu().numpy(), labels=batched_labels[i].cpu().numpy())
-                # vis_pc(batched_pts[i].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
+                    if VISUALIZE:
+                        vis_pc(batched_pts[i].cpu().numpy(), bboxes=batched_gt_bboxes[i].cpu().numpy(), labels=batched_labels[i].cpu().numpy())
+                        vis_pc(batched_pts[i].cpu().numpy(), bboxes=lidar_bboxes, labels=labels)
 
-                # 1. GT -> label만 뜨도록
-                # 2. pred -> 가장 score 높은 bbox만 뜨도록
-                # 3. 
+                    # 1) 가운데 구분선
+                    bev_side_by_side = np.hstack([bev_GT, bev_pred])
+                    half_w  = bev_GT.shape[1]
+                    draw_center_separator(bev_side_by_side, color=(200, 200, 200), thickness=2)
 
-                # 1) 가운데 구분선
-                bev_side_by_side = np.hstack([bev_GT, bev_pred])
-                half_w  = bev_GT.shape[1]
-                draw_center_separator(bev_side_by_side, color=(200, 200, 200), thickness=2)
-
-                # 2) 하단 텍스트
-                draw_bottom_center_text(bev_side_by_side, "[GT]",   x_center=half_w // 2, color=(0, 255, 0))
-                draw_bottom_center_text(bev_side_by_side, "[PRED]", x_center=half_w + half_w // 2, color=(0, 255, 255))
-                cv2.imwrite(f"{bev_GT_pred}/{pcd_ts}.png", bev_side_by_side)
+                    # 2) 하단 텍스트
+                    draw_bottom_center_text(bev_side_by_side, "[GT]",   x_center=half_w // 2, color=(0, 255, 0))
+                    draw_bottom_center_text(bev_side_by_side, "[PRED]", x_center=half_w + half_w // 2, color=(0, 255, 255))
+                    cv2.imwrite(f"{bev_GT_pred}/{pcd_ts}.png", bev_side_by_side)
 
             val_step += 1
 
@@ -332,12 +331,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
-
-
-# result_날짜_시간
-# label이 있는 각 디렉토리들에 대해 수행
-# 각 디렉토리 안에 summary 안의 각 값들 기록
-# pred BEV 영상
-# GT BEV 영상
-# train dataset이 되겠구만.. 
-# 얾.. 그러면 각 디렉토리에 대해 train / val / test pkl 만들어서 돌려야하는건데.. 
