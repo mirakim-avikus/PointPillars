@@ -25,10 +25,11 @@ chmod +x "$SCRIPT_DIR/check_same_timestamp.sh"
 # data 가공 파라미터
 # ===============================
 MIN_PTS_AFTER_FILTER=10
-COMPENSATE_IMU=true
+COMPENSATE_IMU=false
 
 COMPENSATE_IMU_FLAG=""
 if [ "$COMPENSATE_IMU" = true ]; then
+    echo "Compensate IMU"
     COMPENSATE_IMU_FLAG="--compensate_imu"
 fi
 
