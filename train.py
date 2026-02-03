@@ -6,6 +6,7 @@ import pdb
 import cv2
 import yaml
 import numpy as np
+import re
 
 from pointpillars.utils import setup_seed, vis_pc, read_calib, keep_bbox_from_lidar_range, RunningMetrics, iou3d_fn_lidar, iou_bev_fn_lidar, PRAccumulator
 from pointpillars.dataset import Avikus, get_dataloader
@@ -25,6 +26,110 @@ ID2NAME = {int(v): k for k, v in CLASSES.items()}
 IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS 
 VISUALIZE = False
 POINT_CLOUD_RANGE = [5, -72., -10., 180., 72., 30.]
+
+# ---- 10 -> 4 class mapping (orig_id:0~9 -> mapped_id:0~3) ----
+CLASS_MAP_10_TO_4 = np.array([
+    1,  # 0: jetski       -> 1 (jetski)
+    0,  # 1: smallboat    -> 0 (motorboat)
+    0,  # 2: mediumboat   -> 0
+    2,  # 3: c-marker     -> 2 (cmarker group)
+    0,  # 4: yacht        -> 0
+    2,  # 5: pole         -> 2
+    0,  # 6: dinghyboat   -> 0
+    0,  # 7: bigboat      -> 0
+    3,  # 8: bridgepillar -> 3
+    2,  # 9: buoy         -> 2
+], dtype=np.int64)
+
+MAPPED_CLASS_NAMES = ["motorboat", "jetski", "cmarker", "bridgepillar"]
+MAPPED_ID2NAME = {i: n for i, n in enumerate(MAPPED_CLASS_NAMES)}
+
+
+def load_metric_from_section(path: str, section: str = "metric values_m", key: str = "mAPBEV") -> float:
+    """
+    로그 파일의 특정 섹션에서 지정된 key(예: mAPBEV)의 값을 읽어온다.
+    없으면 -1.0 반환.
+    """
+    if not os.path.exists(path):
+        return -1.0
+
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    # 1. 해당 섹션 블록([section] ... 다음 [ 전까지) 추출
+    pattern = rf"\[{re.escape(section)}\]\s*(.*?)(?=\n\[|\Z)"
+    m = re.search(pattern, text, flags=re.DOTALL)
+    if not m:
+        return -1.0
+
+    block = m.group(1)
+
+    # 2. 섹션 블록 내부에서 key=value 패턴 찾기
+    # key 뒤에 바로 = 이 오거나 공백이 있는 경우 모두 대응
+    key_pattern = rf"^{re.escape(key)}\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*$"
+    m_metric = re.search(key_pattern, block, flags=re.MULTILINE)
+    
+    return float(m_metric.group(1)) if m_metric else -1.0
+
+def remap_labels_to_4(labels: np.ndarray) -> np.ndarray:
+    """
+    labels: (N,) int array. supports:
+      - already-mapped labels in [0..3]
+      - original labels in [0..9]
+    returns: (N,) labels in [0..3]
+    """
+    if labels.size == 0:
+        return labels.astype(np.int64)
+
+    labels = labels.astype(np.int64)
+
+    # original 0~9 assumed
+    if labels.min() < 0 or labels.max() >= len(CLASS_MAP_10_TO_4):
+        raise ValueError(f"labels out of expected range. min={labels.min()} max={labels.max()}")
+
+    return CLASS_MAP_10_TO_4[labels]
+
+# original class names in your current setup (10-class)
+ORIG_CLASS_LIST = [ID2NAME[i] for i in sorted(CLASSES.values())]  # e.g. ["jetski","smallboat",...]
+
+GROUPS = {
+    "motorboat":   ["smallboat", "mediumboat", "yacht", "dinghyboat", "bigboat"],
+    "jetski":      ["jetski"],
+    "cmarker":     ["c-marker", "pole", "buoy"],
+    "bridgepillar":["bridgepillar"],
+}
+
+def build_mapped_iou_thresholds(IOU_THRESHOLDS):
+    """
+    returns thresholds keyed by mapped class name, same type style as your PRAccumulator expects.
+    - if IOU_THRESHOLDS is dict[name->thr] => dict[mapped_name->thr]
+    - if IOU_THRESHOLDS is list/tuple aligned with ORIG_CLASS_LIST order => dict[mapped_name->thr]
+    """
+    # case A) dict
+    if isinstance(IOU_THRESHOLDS, dict):
+        orig_thr = IOU_THRESHOLDS
+        mapped_thr = {}
+        for mname, members in GROUPS.items():
+            vals = [orig_thr[mem] for mem in members if mem in orig_thr]
+            if len(vals) == 0:
+                raise KeyError(f"IOU_THRESHOLDS missing members for {mname}: {members}")
+            mapped_thr[mname] = float(min(vals))
+        return mapped_thr
+
+    # case B) list/tuple aligned with ORIG_CLASS_LIST
+    if isinstance(IOU_THRESHOLDS, (list, tuple, np.ndarray)):
+        orig_thr = {c: float(IOU_THRESHOLDS[idx]) for idx, c in enumerate(ORIG_CLASS_LIST)}
+        mapped_thr = {}
+        for mname, members in GROUPS.items():
+            vals = [orig_thr[mem] for mem in members if mem in orig_thr]
+            if len(vals) == 0:
+                raise KeyError(f"IOU_THRESHOLDS missing members for {mname}: {members}")
+            mapped_thr[mname] = float(min(vals))
+        return mapped_thr
+
+    raise TypeError(f"Unsupported IOU_THRESHOLDS type: {type(IOU_THRESHOLDS)}")
+
+MAPPED_IOU_THRESHOLDS = build_mapped_iou_thresholds(IOU_THRESHOLDS)
 
 def find_closest_lidar(lidar_dir, data_name):
     lidar_list = sorted([lidar for lidar in os.listdir(lidar_dir) if lidar.endswith('.pcd')])
@@ -114,7 +219,7 @@ def main(args):
                                       batch_size=args.batch_size, 
                                       num_workers=args.num_workers,
                                       shuffle=True)
-    val_dataloader = get_dataloader(dataset=val_dataset, 
+    val_dataloader = get_dataloader(dataset=train_dataset, # TODO replace train dataset with test dataset
                                     batch_size=args.batch_size, 
                                     num_workers=args.num_workers,
                                     shuffle=False)
@@ -288,11 +393,16 @@ def main(args):
         if (epoch + 1) % args.ckpt_freq_epoch == 0:
             torch.save(pointpillars.state_dict(), os.path.join(saved_ckpt_path, f'epoch_{epoch+1}.pth'))
 
-        if epoch % 2 == 0:
+        if epoch % 10 != 0:
             continue
         CLASS_LIST = [ID2NAME[i] for i in sorted(CLASSES.values())]
         acc3d = PRAccumulator(CLASS_LIST, ID2NAME, iou3d_fn_lidar, IOU_THRESHOLDS)
         accbev = PRAccumulator(CLASS_LIST, ID2NAME, iou_bev_fn_lidar, IOU_THRESHOLDS)
+
+        CLASS_LIST_m = MAPPED_CLASS_NAMES
+        ID2NAME_FOR_ACC_m = MAPPED_ID2NAME
+        acc3d_m = PRAccumulator(CLASS_LIST_m, ID2NAME_FOR_ACC_m, iou3d_fn_lidar, MAPPED_IOU_THRESHOLDS)
+        accbev_m = PRAccumulator(CLASS_LIST_m, ID2NAME_FOR_ACC_m, iou_bev_fn_lidar, MAPPED_IOU_THRESHOLDS)
 
         pointpillars.eval()
         with torch.no_grad():
@@ -343,6 +453,19 @@ def main(args):
                     acc3d.add_frame(lidar_bboxes, scores, labels, batched_gt_bboxes[i].cpu().numpy(), batched_labels[i].cpu().numpy(), collect_errors=True)
                     accbev.add_frame(lidar_bboxes, scores, labels, batched_gt_bboxes[i].cpu().numpy(), batched_labels[i].cpu().numpy(), collect_errors=False)
 
+                    lidar_bboxes = res_filter['lidar_bboxes']
+                    labels, scores = res_filter['labels'], res_filter['scores']
+
+                    # --- remap pred/gt labels to 4 classes ---
+                    labels_m = remap_labels_to_4(labels)
+                    gt_labels_np = batched_labels[i].cpu().numpy()
+                    gt_labels_m = remap_labels_to_4(gt_labels_np)
+
+                    gt_boxes_np = batched_gt_bboxes[i].cpu().numpy()
+
+                    acc3d_m.add_frame(lidar_bboxes, scores, labels_m, gt_boxes_np, gt_labels_m, collect_errors=True)
+                    accbev_m.add_frame(lidar_bboxes, scores, labels_m, gt_boxes_np, gt_labels_m, collect_errors=False)
+
                 val_step += 1
 
                 print('GT count:', sum(acc3d.n_gt.values()))
@@ -359,7 +482,18 @@ def main(args):
                                     "matched_errors" : matched_errs})
         summary = metrics.compute()
         print(f"[VAL] score = {summary['score']} | mAP3D = {summary['mAP_3D']} | mAPBEV = {summary['mAP_BEV']} | ATE = {summary['ATE']} | AOE_deg = {summary['AOE_deg']} | ASE = {summary['ASE']}")
-                
+
+        per_class_ap3d_m, matched_errs_m = acc3d_m.compute_map()
+        per_class_apbev_m, _ = accbev_m.compute_map()
+
+        metrics_m = RunningMetrics(class_names=CLASS_LIST_m)
+        metrics_m.update_from_batch({"ap3d" : per_class_ap3d_m,
+                                    "apbev" : per_class_apbev_m, 
+                                    "matched_errors" : matched_errs_m})
+        summary_m = metrics_m.compute()
+        print(f"[VAL] score = {summary_m['score']} | mAP3D = {summary_m['mAP_3D']} | mAPBEV = {summary_m['mAP_BEV']} | ATE = {summary_m['ATE']} | AOE_deg = {summary_m['AOE_deg']} | ASE = {summary_m['ASE']}")
+
+
         writer.add_scalar("val/score", summary['score'], epoch)
         writer.add_scalar("val/mAP_3D", summary['mAP_3D'], epoch)
         writer.add_scalar("val/mAP_BEV", summary['mAP_BEV'], epoch)
@@ -373,15 +507,73 @@ def main(args):
         prev_best = -1.0
         if os.path.exists(best_score_txt):
             with open(best_score_txt, "r") as f:
-                prev_best = float(f.read().strip() or -1.0)
+                prev_best = load_metric_from_section(best_score_txt, "metric values_m", "mAPBEV")
         
-        if summary['score'] > prev_best:
+        if summary_m['mAP_BEV'] > prev_best:
             torch.save(pointpillars.state_dict(), best_path)
             with open(best_score_txt, "w") as f:
-                f.write(str(summary["score"]))
-            print(f"[VAL] New best! score={summary['score']} -> saved to {best_path}")
+                f.write(f"[metric values]\n")
+                # 1) all classes -> metric values
+                f.write(f"score={summary['score']}\n")
+                f.write(f"mAP3D={summary['mAP_3D']}\n")
+                f.write(f"mAPBEV={summary['mAP_BEV']}\n")
+                f.write(f"ATE={summary['ATE']}\n")
+                f.write(f"AOE_deg={summary['AOE_deg']}\n")
+                f.write(f"ASE={summary['ASE']}\n")
+
+                # 2) all classes -> per-class AP3D
+                f.write("\n[per_class_ap3d]\n")
+                for cname in CLASS_LIST:   # CLASS_LIST 순서 고정
+                    ap = float(per_class_ap3d.get(cname, 0.0))
+                    f.write(f"{cname}={ap}\n")
+
+                # 3) all classes -> per-class APBEV
+                f.write("\n[per_class_apbev]\n")
+                for cname in CLASS_LIST:
+                    ap = float(per_class_apbev.get(cname, 0.0))
+                    f.write(f"{cname}={ap}\n")
+
+                f.write("\n[GT per class]\n")
+                for c in CLASS_LIST:
+                    f.write(f"{c}={acc3d.n_gt[c]}\n")
+
+                f.write("\n[Pred count per class]\n")
+                for c in CLASS_LIST:
+                    f.write(f"{c}={len(acc3d.scores[c])}\n")
+
+                f.write(f"\n====================\n")
+                # 1) mapped class -> metric values
+                f.write(f"[metric values_m]\n")
+                f.write(f"score={summary_m['score']}\n")
+                f.write(f"mAP3D={summary_m['mAP_3D']}\n")
+                f.write(f"mAPBEV={summary_m['mAP_BEV']}\n")
+                f.write(f"ATE={summary_m['ATE']}\n")
+                f.write(f"AOE_deg={summary_m['AOE_deg']}\n")
+                f.write(f"ASE={summary_m['ASE']}\n")
+
+                # 2) mapped class -> per-class AP3D
+                f.write("\n[per_class_ap3d_m]\n")
+                for cname in CLASS_LIST_m:   # CLASS_LIST 순서 고정
+                    ap = float(per_class_ap3d_m.get(cname, 0.0))
+                    f.write(f"{cname}={ap}\n")
+
+                # 3) mapped class -> per-class APBEV
+                f.write("\n[per_class_apbev_m]\n")
+                for cname in CLASS_LIST_m:
+                    ap = float(per_class_apbev_m.get(cname, 0.0))
+                    f.write(f"{cname}={ap}\n")
+
+                f.write("\n[GT per class_m]\n")
+                for c in CLASS_LIST_m:
+                    f.write(f"{c}={acc3d_m.n_gt[c]}\n")
+
+                f.write("\n[Pred count per class_m]\n")
+                for c in CLASS_LIST_m:
+                    f.write(f"{c}={len(acc3d_m.scores[c])}\n")
+
+            print(f"[VAL] New best! mAPBEV={summary_m['mAP_BEV']} -> saved to {best_path}")
         else:
-             print(f"[VAL] score={summary['score']:.4f} (best={prev_best:.4f})")
+            print(f"[VAL] mAPBEV={summary_m['mAP_BEV']:.4f} (best={prev_best:.4f})")
     
         metrics.reset()
         pointpillars.train()
