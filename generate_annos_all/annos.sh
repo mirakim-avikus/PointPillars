@@ -24,7 +24,7 @@ chmod +x "$SCRIPT_DIR/check_same_timestamp.sh"
 # ===============================
 # data 가공 파라미터
 # ===============================
-MIN_PTS_AFTER_FILTER=10
+MIN_PTS_AFTER_FILTER=-1
 COMPENSATE_IMU=false
 
 COMPENSATE_IMU_FLAG=""
