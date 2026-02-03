@@ -11,6 +11,7 @@ from pointpillars.utils import limit_period
 class PillarLayer(nn.Module):
     def __init__(self, voxel_size, point_cloud_range, max_num_points, max_voxels):
         super().__init__()
+        self.max_num_points = max_num_points
         self.voxel_layer = Voxelization(voxel_size=voxel_size,
                                         point_cloud_range=point_cloud_range,
                                         max_num_points=max_num_points,
@@ -28,7 +29,10 @@ class PillarLayer(nn.Module):
         pillars, coors, npoints_per_pillar = [], [], []
         for i, pts in enumerate(batched_pts):
             if pts.shape[0] == 0:
-                continue
+                device = pts.device
+                voxels_out = torch.zeros((0, self.max_num_points, pts.shape[-1]), device=device)
+                coors_out = torch.zeros((0, 3), device=device)
+                num_points_per_voxel_out = torch.zeros((0, ), device=device)
             else:
                 voxels_out, coors_out, num_points_per_voxel_out = self.voxel_layer(pts) 
             # voxels_out: (max_voxel, num_points, c), coors_out: (max_voxel, 3)
@@ -68,6 +72,13 @@ class PillarEncoder(nn.Module):
         return:  (bs, out_channel, y_l, x_l)
         '''
         device = pillars.device
+        if pillars.shape[0] == 0:
+            return torch.zeros(
+                (bs, self.out_channel, self.y_l, self.x_l),
+                device=device,
+                dtype=pillars.dtype
+            )
+
         # 1. calculate offset to the points center (in each pillar)
         offset_pt_center = pillars[:, :, :3] - torch.sum(pillars[:, :, :3], dim=1, keepdim=True) / npoints_per_pillar[:, None, None] # (p1 + p2 + ... + pb, num_points, 3)
 
