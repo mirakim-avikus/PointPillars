@@ -52,7 +52,9 @@ class Loss(nn.Module):
         focal_weight = alpha * targets + (1 - alpha) * (1 - targets)
         focal_weight = focal_weight * (1 - pt).pow(gamma)
         cls_loss = focal_weight * bce_loss
-        cls_loss = cls_loss.mean()
+        total_cls_loss = cls_loss.sum()
+        avg_factor = max(num_cls_pos, 1.0)
+        cls_loss = total_cls_loss / avg_factor
         
         # 2. regression loss
         if bbox_pred.size(0) > 0:
