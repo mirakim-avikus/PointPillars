@@ -178,31 +178,6 @@ def get_parameters(calib_path_yaml, calib_info):
     P2 = calib_info['P2'].astype(np.float32)
     return tr_velo_to_cam, r0_rect, P2, K, D
 
-def get_parameters(calib_path_yaml, calib_info):
-    with open(calib_path_yaml, 'rb') as f:
-        calib = yaml.safe_load(f)
-    cam = calib['camera']
-    K = np.array([
-        [cam['fx'], cam['skew'], cam['cx']],
-        [0, cam['fy'], cam['cy']],
-        [0, 0, 1]
-    ], dtype = np.float32)
-    D = np.array([cam['k1'], cam['k2'], cam['k3'], cam['k4']], dtype=np.float32)
-
-    rvec = np.array([calib['camera2lidar']['rvec_1'], calib['camera2lidar']['rvec_2'], calib['camera2lidar']['rvec_3']])
-    tvec = np.array([calib['camera2lidar']['tvec_1'], calib['camera2lidar']['tvec_2'], calib['camera2lidar']['tvec_3']])
-
-    R, _ = cv2.Rodrigues(rvec)
-    tr_velo_to_cam = np.identity(4)
-    lidar2avikus = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-    tr_velo_to_cam[:3, :3] = R@lidar2avikus
-    tr_velo_to_cam[:3, -1] = tvec
-
-    r0_rect = calib_info['R0_rect'].astype(np.float32)
-    P2 = calib_info['P2'].astype(np.float32)
-    return tr_velo_to_cam, r0_rect, P2, K, D
-
-
 def main(args):
     setup_seed()
     point_cloud_range=POINT_CLOUD_RANGE
@@ -324,11 +299,6 @@ def main(args):
                         calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
                         tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
-                        parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                        img_path = os.path.join(os.path.normpath(args.data_root), *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
-                        img = cv2.imread(img_path)
-                        image_shape = img.shape[:2]
-
                         device = bbox_cls_pred.device
                         feature_map_size = torch.tensor(list(bbox_cls_pred.size()[-2:]), device=device)
                         anchors = pointpillars.anchors_generator.get_multi_anchors(feature_map_size)
@@ -375,7 +345,6 @@ def main(args):
                                     num_cls_pos=num_cls_pos, 
                                     batched_bbox_reg=batched_bbox_reg, 
                                     batched_dir_labels=batched_dir_labels)
-                print(' | '.join(f'train loss {k}: {v:.4f}' for k, v in loss_dict.items()))
                 loss = loss_dict['total_loss']
 
             scaler.scale(loss).backward()
@@ -426,8 +395,6 @@ def main(args):
                 for i in range(batch_size):
                     data_name = os.path.normpath(data_dict['batched_img_info'][i]['image_path'])
                     data_key = os.path.normpath(data_dict['batched_img_info'][i]['image_path']).split('/')[0]
-                    parent_path = os.path.dirname(os.path.normpath(args.data_root))
-                    img_path = os.path.join(args.data_root, *parent_path.split('/'), data_dict['batched_img_info'][i]['image_path'])
 
                     data_root = args.data_root
                     calib_info = read_calib(f"{os.path.normpath(data_root)}/{data_key}/calib_{data_key}.txt")
@@ -438,9 +405,6 @@ def main(args):
                     # TODO: temporary fix — replace with permanent calibration loader
                     calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
                     tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
-
-                    img = cv2.imread(img_path, 1)
-                    image_shape = img.shape[:2]
 
                     res_filter = keep_bbox_from_lidar_range(results[i], pcd_limit_range)
                     lidar_bboxes = res_filter['lidar_bboxes']
@@ -467,10 +431,6 @@ def main(args):
                     accbev_m.add_frame(lidar_bboxes, scores, labels_m, gt_boxes_np, gt_labels_m, collect_errors=False)
 
                 val_step += 1
-
-                print('GT count:', sum(acc3d.n_gt.values()))
-                print('Pred scored count:', sum(len(v) for v in acc3d.scores.values()))
-                print('matched_errs so far:', len(acc3d.errs))
 
         per_class_ap3d, matched_errs = acc3d.compute_map()
         per_class_apbev, _ = accbev.compute_map()
