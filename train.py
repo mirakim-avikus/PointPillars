@@ -236,14 +236,15 @@ def main(args):
                                   betas=(0.95, 0.99),
                                   weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer,  
-                                                    max_lr=init_lr*10, 
+                                                    max_lr=init_lr*3, 
                                                     total_steps=max_iters, 
                                                     pct_start=0.4, 
                                                     anneal_strategy='cos',
                                                     cycle_momentum=True, 
                                                     base_momentum=0.95*0.895, 
                                                     max_momentum=0.95,
-                                                    div_factor=10)
+                                                    div_factor=10,
+                                                    final_div_factor=100,)
 
     saved_ckpt_path = os.path.join(args.saved_path, args.ckpt_name, 'weights')
     os.makedirs(saved_ckpt_path, exist_ok=True)
@@ -546,8 +547,8 @@ if __name__ == '__main__':
     parser.add_argument('--saved_path', default='pillar_logs')
     parser.add_argument('--batch_size', type=int, default=6)
     parser.add_argument('--num_workers', type=int, default=12)
-    parser.add_argument('--init_lr', type=float, default=0.00025)
-    parser.add_argument('--max_epoch', type=int, default=160)
+    parser.add_argument('--init_lr', type=float, default=2e-4)
+    parser.add_argument('--max_epoch', type=int, default=280)
     parser.add_argument('--log_freq', type=int, default=8)
     parser.add_argument('--ckpt_freq_epoch', type=int, default=20)
     parser.add_argument('--ckpt_name', type=str, required=True)
