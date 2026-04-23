@@ -152,11 +152,11 @@ class Avikus(Dataset):
             'dimension': annos_dimension,
             'rotation_y': rotation_y
         }
-        # if self.split in ['train', 'trainval']:
-        #     data_dict = data_augment(self.CLASSES, self.data_root, data_dict, self.data_aug_config)
-        # else:
-        data_dict = point_range_filter(data_dict, point_range=self.data_aug_config['point_range_filter'])
-        data_dict = object_range_filter(data_dict, object_range=self.data_aug_config['point_range_filter'])
+        if self.split in ['train', 'trainval']:
+            data_dict = data_augment(self.CLASSES, self.data_root, data_dict, self.data_aug_config)
+        else:
+            data_dict = point_range_filter(data_dict, point_range=self.data_aug_config['point_range_filter'])
+            data_dict = object_range_filter(data_dict, object_range=self.data_aug_config['point_range_filter'])
         return data_dict
 
     def __len__(self):

@@ -6,6 +6,93 @@ import pdb
 from pointpillars.utils import bbox3d2bevcorners, box_collision_test, read_points, \
     remove_pts_in_bboxes, limit_period
 
+@numba.jit(nopython=True)
+def get_occupancy_map(points, resolution, min_angle=-np.pi, max_angle=np.pi):
+    """
+    각도별 최소 거리(r_min)를 계산하여 Occupancy Map 생성
+    resolution: Lidar 수평 해상도 (radian 단위, 예: 0.1도 -> np.deg2rad(0.1))
+    """
+    num_bins = int(np.ceil((max_angle - min_angle) / resolution))
+    # 초기값은 아주 먼 거리로 설정
+    occ_map = np.full(num_bins, 1e6, dtype=np.float32)
+    
+    for i in range(len(points)):
+        x, y = points[i, 0], points[i, 1]
+        r = np.sqrt(x**2 + y**2)
+        phi = np.arctan2(y, x)
+        
+        # 각도를 bin 인덱스로 변환
+        bin_idx = int((phi - min_angle) / resolution)
+        if 0 <= bin_idx < num_bins:
+            if r < occ_map[bin_idx]:
+                occ_map[bin_idx] = r
+                
+    return occ_map
+
+@numba.jit(nopython=True)
+def is_sample_visible_strict(box_3d, occ_map, resolution, fov_deg=120.0):
+    x, y, z, l, w, h, r = box_3d
+    cos_r, sin_r = np.cos(r), np.sin(r)
+    half_fov_rad = np.deg2rad(fov_deg / 2.0)
+
+    # 1. 테두리를 따라 샘플링할 지점 개수 결정 (1m 간격 권장)
+    n_l = int(np.ceil(l)) + 1 # 길이 방향 샘플 수
+    n_w = int(np.ceil(w)) + 1 # 폭 방향 샘플 수
+    total_points = (n_l * 2) + (n_w * 2)
+    
+    check_points = np.empty((total_points, 2), dtype=np.float32)
+    idx = 0
+
+    # 2. 테두리 점 생성 (박스 로컬 좌표 기준)
+    # 좌/우 긴 변
+    for i in range(n_l):
+        cur_l = -l/2 + (l / (n_l - 1)) * i
+        for cur_w in [-w/2, w/2]:
+            check_points[idx, 0] = cur_l * cos_r - cur_w * sin_r + x
+            check_points[idx, 1] = cur_l * sin_r + cur_w * cos_r + y
+            idx += 1
+    # 앞/뒤 짧은 변
+    for i in range(1, n_w - 1): # 모서리 중복 제외
+        cur_w = -w/2 + (w / (n_w - 1)) * i
+        for cur_l in [-l/2, l/2]:
+            check_points[idx, 0] = cur_l * cos_r - cur_w * sin_r + x
+            check_points[idx, 1] = cur_l * sin_r + cur_w * cos_r + y
+            idx += 1
+
+    # 3. 모든 테두리 점에 대해 가시성 검사
+    for i in range(idx):
+        px, py = check_points[i, 0], check_points[i, 1]
+        r_p = np.sqrt(px**2 + py**2)
+        phi_p = np.arctan2(py, px)
+
+        if phi_p < -half_fov_rad or phi_p > half_fov_rad:
+            continue
+            
+        bin_idx = int((phi_p - (-half_fov_rad)) / resolution)
+        if bin_idx < 0 or bin_idx >= len(occ_map):
+            continue
+            
+        # [핵심] 마진을 0.5m로 줄여서 장애물과 조금만 겹쳐도 바로 탈락시킴
+        if occ_map[bin_idx] < 1000 and r_p > (occ_map[bin_idx] - 1.0):
+            # r_p가 장애물 거리(occ_map)보다 뒤에 있으면(가려지면) 탈락
+            # 안전을 위해 장애물보다 1m 앞까지만 허용
+            return False
+            
+    return True
+
+def filter_samples_by_visibility(sampled_list, pts, res_deg=0.1):
+    """
+    dbsample 내부에서 호출할 래퍼 함수
+    """
+    res_rad = np.deg2rad(res_deg)
+    half_fov = np.deg2rad(60) 
+    occ_map = get_occupancy_map(pts, res_rad, min_angle=-half_fov, max_angle=half_fov)
+    
+    keep_list = []
+    for sample in sampled_list:
+        if is_sample_visible_strict(sample['box3d_lidar'], occ_map, res_rad):
+            keep_list.append(sample)
+    return keep_list
 
 def dbsample(CLASSES, data_root, data_dict, db_sampler, sample_groups):
     '''
@@ -18,13 +105,17 @@ def dbsample(CLASSES, data_root, data_dict, db_sampler, sample_groups):
     pts, gt_bboxes_3d = data_dict['pts'], data_dict['gt_bboxes_3d']
     gt_labels, gt_names = data_dict['gt_labels'], data_dict['gt_names']
     gt_difficulty = data_dict['difficulty']
-    image_info, calib_info = data_dict['image_info'], data_dict['calib_info']
+    image_info, calib_info, pcd_info = data_dict['image_info'], data_dict['calib_info'], data_dict['pcd_info']
+    location, dimension, rotation_y = data_dict['location'], data_dict['dimension'], data_dict['rotation_y']
 
     sampled_pts, sampled_names, sampled_labels = [], [], []
     sampled_bboxes, sampled_difficulty = [], []
 
     avoid_coll_boxes = copy.deepcopy(gt_bboxes_3d)
     for name, v in sample_groups.items():
+        # 0. skip class not in GT db
+        if name not in db_sampler:
+            continue
         # 1. calculate sample numbers
         sampled_num = v - np.sum(gt_names == name)
         if sampled_num <= 0:
@@ -32,6 +123,11 @@ def dbsample(CLASSES, data_root, data_dict, db_sampler, sample_groups):
 
         # 2. sample databases bboxes
         sampled_cls_list = db_sampler[name].sample(sampled_num)
+
+        # 2.5 Space Filtering (극좌표계/Alpha Sample 활용)
+        sampled_cls_list = filter_samples_by_visibility(sampled_cls_list, pts, res_deg=0.2)
+        if len(sampled_cls_list) == 0:
+            continue
         sampled_cls_bboxes = np.array([item['box3d_lidar'] for item in sampled_cls_list], dtype=np.float32)
 
         # 3. box_collision_test
@@ -63,13 +159,16 @@ def dbsample(CLASSES, data_root, data_dict, db_sampler, sample_groups):
         
     # merge sampled database
     # remove raw points in sampled_bboxes firstly
-    pts = remove_pts_in_bboxes(pts, np.stack(sampled_bboxes, axis=0))
-    # pts = np.concatenate([pts, np.concatenate(sampled_pts, axis=0)], axis=0)
-    pts = np.concatenate([np.concatenate(sampled_pts, axis=0), pts], axis=0)
+    if len(sampled_bboxes) > 0:
+        pts = remove_pts_in_bboxes(pts, np.stack(sampled_bboxes, axis=0))
+        # pts = np.concatenate([pts, np.concatenate(sampled_pts, axis=0)], axis=0)
+        pts = np.concatenate([np.concatenate(sampled_pts, axis=0), pts], axis=0)
+        gt_labels = np.concatenate([gt_labels, np.array(sampled_labels)], axis=0)
+        gt_names = np.concatenate([gt_names, np.array(sampled_names)], axis=0)
+        difficulty = np.concatenate([gt_difficulty, np.array(sampled_difficulty)], axis=0)
+    else:
+        difficulty = gt_difficulty
     gt_bboxes_3d = avoid_coll_boxes.astype(np.float32)
-    gt_labels = np.concatenate([gt_labels, np.array(sampled_labels)], axis=0)
-    gt_names = np.concatenate([gt_names, np.array(sampled_names)], axis=0)
-    difficulty = np.concatenate([gt_difficulty, np.array(sampled_difficulty)], axis=0)
     data_dict = {
             'pts': pts,
             'gt_bboxes_3d': gt_bboxes_3d,
@@ -77,68 +176,85 @@ def dbsample(CLASSES, data_root, data_dict, db_sampler, sample_groups):
             'gt_names': gt_names,
             'difficulty': difficulty,
             'image_info': image_info,
-            'calib_info': calib_info
+            'calib_info': calib_info,
+            'pcd_info': pcd_info,
+            'location': location,
+            'dimension': dimension,
+            'rotation_y': rotation_y
         }
     return data_dict
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, parallel=True)
 def object_noise_core(pts, gt_bboxes_3d, bev_corners, trans_vec, rot_angle, rot_mat, masks):
-    '''
-    pts: (N, 4)
-    gt_bboxes_3d: (n_bbox, 7)
-    bev_corners: ((n_bbox, 4, 2))
-    trans_vec: (n_bbox, num_try, 3)
-    rot_mat: (n_bbox, num_try, 2, 2)
-    masks: (N, n_bbox), bool
-    return: gt_bboxes_3d, pts
-    '''
-    # 1. select the noise of num_try for each bbox under the collision test
+    """
+    최적화 포인트:
+    1. Python 딕셔너리(visit) 제거 -> Numba 최적화 가속
+    2. 중첩 루프 구조 개선 -> 포인트 업데이트를 행렬 연산화
+    3. prange를 활용한 병렬 처리 적용
+    """
     n_bbox, num_try = trans_vec.shape[:2]
+    num_pts = pts.shape[0]
     
-    # succ_mask: (n_bbox, ), whether each bbox can be added noise successfully. -1 denotes failure.
-    succ_mask = -np.ones((n_bbox, ), dtype=np.int_)
+    # 1. 충돌 테스트 및 성공 마스크 계산 (기존 로직 유지하되 최적화)
+    succ_mask = -np.ones(n_bbox, dtype=np.int32)
     for i in range(n_bbox):
         for j in range(num_try):
-            cur_bbox = bev_corners[i] - np.expand_dims(gt_bboxes_3d[i, :2], 0) # (4, 2) - (1, 2) -> (4, 2)
-            rot = np.zeros((2, 2), dtype=np.float32)
-            rot[:] = rot_mat[i, j] # (2, 2)
-            trans = trans_vec[i, j] # (3, )
-            cur_bbox = cur_bbox @ rot
-            cur_bbox += gt_bboxes_3d[i, :2]
-            cur_bbox += np.expand_dims(trans[:2], 0) # (4, 2)
+            # 로컬 좌표계 변환 및 회전/이동
+            rel_corners = bev_corners[i] - gt_bboxes_3d[i, :2]
+            rot = rot_mat[i, j].copy()
+            trans = trans_vec[i, j, :2]
+            
+            # (4, 2) @ (2, 2) + (2,)
+            cur_bbox = (rel_corners @ rot) + gt_bboxes_3d[i, :2] + trans
+            
             coll_mat = box_collision_test(np.expand_dims(cur_bbox, 0), bev_corners)
             coll_mat[0, i] = False
-            if coll_mat.any():
-                continue
-            else:
-                bev_corners[i] = cur_bbox # update the bev_corners when adding noise succseefully.
+            
+            if not coll_mat.any():
+                bev_corners[i] = cur_bbox
                 succ_mask[i] = j
                 break
-    # 2. points and bboxes noise
-    visit = {}
-    for i in range(n_bbox):
-        jj = succ_mask[i] 
-        if jj == -1:
-            continue
-        cur_trans, cur_angle = trans_vec[i, jj], rot_angle[i, jj]
-        cur_rot_mat = np.zeros((2, 2), dtype=np.float32)
-        cur_rot_mat[:] = rot_mat[i, jj]
-        for k in range(len(pts)):
-            if masks[k][i] and k not in visit:
-                cur_pt = pts[k] # (4, )
-                cur_pt_xyz = np.zeros((1, 3), dtype=np.float32)
-                cur_pt_xyz[0] = cur_pt[:3] - gt_bboxes_3d[i][:3]
-                tmp_cur_pt_xy = np.zeros((1, 2), dtype=np.float32)
-                tmp_cur_pt_xy[:] = cur_pt_xyz[:, :2]
-                cur_pt_xyz[:, :2] = tmp_cur_pt_xy @ cur_rot_mat # (1, 2)
-                cur_pt_xyz[0] = cur_pt_xyz[0] + gt_bboxes_3d[i][:3]
-                cur_pt_xyz[0] = cur_pt_xyz[0] + cur_trans[:3]
-                cur_pt[:3] = cur_pt_xyz[0]
-                visit[k] = 1
 
-        gt_bboxes_3d[i, :3] += cur_trans[:3]
-        gt_bboxes_3d[i, 6] += cur_angle
+    # 2. 포인트 업데이트 (핵심 최적화 구간)
+    # 각 포인트가 어떤 박스에 속해 있고, 노이즈 적용이 성공했는지 미리 계산
+    # point_to_bbox: 각 포인트가 노이즈가 적용될 박스 인덱스를 저장 (-1이면 적용 안 함)
+    point_to_bbox = -np.ones(num_pts, dtype=np.int32)
+    for i in range(n_bbox):
+        if succ_mask[i] != -1:
+            for k in range(num_pts):
+                if masks[k, i]:
+                    # 중복 방지를 위해 첫 번째 발견된 박스만 적용 (기존 visit 로직과 동일)
+                    if point_to_bbox[k] == -1:
+                        point_to_bbox[k] = i
+
+    # prange를 사용하여 포인트 변환 병렬화
+    for k in numba.prange(num_pts):
+        bbox_idx = point_to_bbox[k]
+        if bbox_idx != -1:
+            i = bbox_idx
+            jj = succ_mask[i]
+            
+            # 변환 값 추출
+            c_trans = trans_vec[i, jj]
+            c_rot = rot_mat[i, jj].copy()
+            center = gt_bboxes_3d[i, :3]
+            
+            # 포인트 변환: 중심 기준 회전 후 이동
+            # pts[k, :2] 회전
+            rel_pt = pts[k, :2] - center[:2]
+            new_xy = (rel_pt @ c_rot) + center[:2] + c_trans[:2]
+            
+            pts[k, 0] = new_xy[0]
+            pts[k, 1] = new_xy[1]
+            pts[k, 2] = pts[k, 2] + c_trans[2] # Z축 이동
+
+    # 3. BBox 정보 업데이트
+    for i in range(n_bbox):
+        jj = succ_mask[i]
+        if jj != -1:
+            gt_bboxes_3d[i, :3] += trans_vec[i, jj]
+            gt_bboxes_3d[i, 6] += rot_angle[i, jj]
 
     return gt_bboxes_3d, pts
 
