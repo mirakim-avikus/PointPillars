@@ -121,6 +121,40 @@ def read_calib(calib_path):
 def main(args):
     args.data_root = os.path.normpath(args.data_root)
     ROOT_PREFIX = args.data_root
+    LABEL_EXIST = False
+    for dir_name in os.listdir(ROOT_PREFIX):
+        full_path = os.path.join(ROOT_PREFIX, dir_name, "label_original")
+        if os.path.isdir(full_path):
+            LABEL_EXIST = True
+            OUT_DIR = os.path.join(ROOT_PREFIX, dir_name, "label")
+            os.makedirs(OUT_DIR)
+            label_files = glob.glob(os.path.join(full_path, "*.txt"))
+            for file_path in label_files:
+                modified_lines = []
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                for line in lines:
+                    parts = line.strip().split()
+                    if not parts: continue
+                    try:
+                        height = float(parts[9])
+                        loc_z = float(parts[13])
+                        new_loc_z = loc_z - (height / 2.0)
+                        parts[13] = f"{new_loc_z:.2f}"
+                        new_line = " ".join(parts) + '\n'
+                        modified_lines.append(new_line)
+                    except (ValueError, IndexError) as e:
+                        print(f"Error processing line in {file_path}: {e}")
+                        modified_lines.append(line)
+                file_name = os.path.basename(file_path)
+                with open(os.path.join(OUT_DIR, file_name), 'w') as out_f:
+                    out_f.writelines(modified_lines)
+            print(f"Labeled data has been saved!")
+
+    if LABEL_EXIST:
+        print(f"[INFO] label_original folder has been processed! skip meta logic ... ")
+        return
+
     LABEL_META_PATH =  os.path.join(ROOT_PREFIX,"meta/" )
 
     all_label_meta = load_all_json(LABEL_META_PATH)
