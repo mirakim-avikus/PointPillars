@@ -2,9 +2,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 BASE_DIR="/workspace/data_to_superbai_1114"
 TMP_ROOT="/workspace/data_to_eval"
-SCRIPT="BEV_with_metric.py"
+SCRIPT="$SCRIPT_DIR/BEV_with_metric.py"
 
 mkdir -p "${TMP_ROOT}"
 
@@ -36,7 +38,7 @@ for SUBDIR in "${BASE_DIR}"/*; do
     cp -r "${SUBDIR}" "${TMP_DIR}"
 
     echo "[2/4] Make data from data_to_eval..."
-    cd generate_annos_all && ./annos.sh "${TMP_ROOT}" && cd ..
+    "$SCRIPT_DIR/../data_prep/generate_annos/annos.sh" "${TMP_ROOT}"
 
     echo "[3/4] Running BEV_with_metric.py..."
     python3 "${SCRIPT}" \
@@ -56,12 +58,12 @@ done
 
 echo "===================================================="
 echo "[1/2] Make Video for all scores (01, 02, 03)..."
-./make_video.sh "${BASE_DIR}" 8 "gt_pred_noimu.mp4" || {
+"$SCRIPT_DIR/../visualization/make_video.sh" "${BASE_DIR}" 8 "gt_pred_noimu.mp4" || {
         echo "[ERROR] Script failed for Making Video"
     }
 
 echo "[2/2] BEV sorting..."
-python3 bev_sorting.py || {
+python3 "$SCRIPT_DIR/../visualization/bev_sorting.py" || {
         echo "[ERROR] Script failed for BEV Sorting"
     }
 
