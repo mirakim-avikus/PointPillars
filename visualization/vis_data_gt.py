@@ -1,15 +1,10 @@
 import argparse
-from ast import arg
 import cv2
 import copy
 import numpy as np
 import os
-import sys
 
-from yaml import parse
-CUR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(CUR))
-from utils import read_points, read_calib, read_label, bbox_camera2lidar, vis_pc, bbox3d2corners,\
+from pointpillars.utils import read_points, read_calib, read_label, bbox_camera2lidar, vis_pc, bbox3d2corners,\
      points_lidar2image, vis_img_3d
 
 
