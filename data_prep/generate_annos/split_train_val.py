@@ -48,7 +48,7 @@ def main(args):
 
     test_lines = lines[:num_test]
     val_lines = lines[num_test:num_test+num_val]
-    train_lines = lines
+    train_lines = lines[num_test+num_val:]
 
     # 인덱스 재정렬
     root_dir = root_path.split('/')[-1]
