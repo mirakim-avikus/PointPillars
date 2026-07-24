@@ -22,13 +22,16 @@ Original Code : A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI
     ```text
     data_root
     ├─ data_name_A
-    │  └─ 이미지, pcd, yaml
+    │  └─ images/, pcd/, yaml, label_original/
     ├─ data_name_B
-    │  └─ 이미지, pcd, yaml
+    │  └─ images/, pcd/, yaml, label_original/
     ├─ data_name_C
     │  └─ ...
     └─ zip
     ```
+
+  - `label_original/`: SuperbAI에서 export한 원본 라벨(.txt, KITTI 포맷 그대로)을 여기에 둔다.
+  - `annos.sh` 실행 시 `generate_superb_label.py`가 `label_original/`의 라벨을 읽어 z 좌표 기준을 (bbox 중심 → bbox 바닥 중심으로) 변환한 뒤 같은 `data_name` 폴더 아래 `label/`로 저장한다. 이후 파이프라인(`split_train_val.py`, `pre_process_kitti.py` 등)은 `label_original/`이 아니라 이 `label/`을 사용한다.
 
 
 ---

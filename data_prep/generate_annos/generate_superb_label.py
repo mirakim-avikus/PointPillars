@@ -118,51 +118,38 @@ def read_calib(calib_path):
         D = np.array([camera['k1'], camera['k2'], camera['k3'], camera['k4']], dtype=np.float32)
     return Rt, K, D
 
-def main(args):
-    args.data_root = os.path.normpath(args.data_root)
-    ROOT_PREFIX = args.data_root
-    LABEL_EXIST = False
-    for dir_name in os.listdir(ROOT_PREFIX):
-        full_path = os.path.join(ROOT_PREFIX, dir_name, "label_original")
-        if os.path.isdir(full_path):
-            LABEL_EXIST = True
-            OUT_DIR = os.path.join(ROOT_PREFIX, dir_name, "label")
-            os.makedirs(OUT_DIR)
-            label_files = glob.glob(os.path.join(full_path, "*.txt"))
-            for file_path in label_files:
-                modified_lines = []
-                with open(file_path, 'r') as f:
-                    lines = f.readlines()
-                for line in lines:
-                    parts = line.strip().split()
-                    if not parts: continue
-                    try:
-                        height = float(parts[9])
-                        loc_z = float(parts[13])
-                        new_loc_z = loc_z - (height / 2.0)
-                        parts[13] = f"{new_loc_z:.2f}"
-                        new_line = " ".join(parts) + '\n'
-                        modified_lines.append(new_line)
-                    except (ValueError, IndexError) as e:
-                        print(f"Error processing line in {file_path}: {e}")
-                        modified_lines.append(line)
-                file_name = os.path.basename(file_path)
-                with open(os.path.join(OUT_DIR, file_name), 'w') as out_f:
-                    out_f.writelines(modified_lines)
-            print(f"Labeled data has been saved!")
+def process_label_original(root_prefix, dir_name):
+    """label_original/*.txt (raw KITTI export, z=bbox center) -> label/*.txt (z=bbox bottom center)"""
+    full_path = os.path.join(root_prefix, dir_name, "label_original")
+    OUT_DIR = os.path.join(root_prefix, dir_name, "label")
+    os.makedirs(OUT_DIR, exist_ok=True)
+    label_files = glob.glob(os.path.join(full_path, "*.txt"))
+    for file_path in label_files:
+        modified_lines = []
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            parts = line.strip().split()
+            if not parts: continue
+            try:
+                height = float(parts[9])
+                loc_z = float(parts[13])
+                new_loc_z = loc_z - (height / 2.0)
+                parts[13] = f"{new_loc_z:.2f}"
+                new_line = " ".join(parts) + '\n'
+                modified_lines.append(new_line)
+            except (ValueError, IndexError) as e:
+                print(f"Error processing line in {file_path}: {e}")
+                modified_lines.append(line)
+        file_name = os.path.basename(file_path)
+        with open(os.path.join(OUT_DIR, file_name), 'w') as out_f:
+            out_f.writelines(modified_lines)
+    print(f"[{dir_name}] label_original -> label converted.")
 
-    if LABEL_EXIST:
-        print(f"[INFO] label_original folder has been processed! skip meta logic ... ")
-        return
 
-    LABEL_META_PATH =  os.path.join(ROOT_PREFIX,"meta/" )
-
-    all_label_meta = load_all_json(LABEL_META_PATH)
-    len(all_label_meta)
-    for path, label_meta in all_label_meta.items():
+def process_label_meta(ROOT_PREFIX, dir, label_meta):
         print("start meta..")
         label_path = os.path.join(ROOT_PREFIX, label_meta["label_path"][0])
-        dir = os.path.basename(os.path.normpath(path)).split('.')[0]
 
         CALIB_DIR = os.path.join(ROOT_PREFIX, dir)  # 공통 경로
         new_yaml = os.path.join(CALIB_DIR, "new_lidar.yaml")
@@ -174,18 +161,20 @@ def main(args):
             print(f"[WARNING] new_lidar.yaml not found. Using fallback: {old_yaml}")
             CALIB_PATH = old_yaml
 
-        SRC_PATH_PREFIX = os.path.join(ROOT_PREFIX, dir, "sample")
+        IMAGE_DIR = os.path.join(ROOT_PREFIX, dir, "images")
+        PCD_DIR = os.path.join(ROOT_PREFIX, dir, "pcd")
 
         LABEL_OUTPUT_PATH = os.path.join(ROOT_PREFIX, dir, "label")
 
-        os.makedirs(SRC_PATH_PREFIX, exist_ok=True)
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        os.makedirs(PCD_DIR, exist_ok=True)
         os.makedirs(LABEL_OUTPUT_PATH, exist_ok=True)
 
-        jpg_list = glob.glob(os.path.join(SRC_PATH_PREFIX, "*.jpg"))
+        jpg_list = glob.glob(os.path.join(IMAGE_DIR, "*.jpg"))
         if not jpg_list:
-            print(f"No JPG files found in {SRC_PATH_PREFIX}")
+            print(f"No JPG files found in {IMAGE_DIR}")
 
-        pcd_path_list = glob.glob(os.path.join(SRC_PATH_PREFIX, "*.pcd"))
+        pcd_path_list = glob.glob(os.path.join(PCD_DIR, "*.pcd"))
         pcd_list = []
         for path in pcd_path_list:
             filename = os.path.basename(path)  # 1736093112278.avikus.pcd
@@ -273,6 +262,29 @@ def main(args):
                         )
 
             print(f"Saved {output_file}")
+
+
+def main(args):
+    args.data_root = os.path.normpath(args.data_root)
+    ROOT_PREFIX = args.data_root
+
+    LABEL_META_PATH = os.path.join(ROOT_PREFIX, "meta/")
+    all_label_meta = load_all_json(LABEL_META_PATH) if os.path.isdir(LABEL_META_PATH) else {}
+    meta_by_dir = {
+        os.path.basename(os.path.normpath(path)).split('.')[0]: label_meta
+        for path, label_meta in all_label_meta.items()
+    }
+
+    for dir_name in os.listdir(ROOT_PREFIX):
+        if not os.path.isdir(os.path.join(ROOT_PREFIX, dir_name)):
+            continue
+
+        if os.path.isdir(os.path.join(ROOT_PREFIX, dir_name, "label_original")):
+            process_label_original(ROOT_PREFIX, dir_name)
+        elif dir_name in meta_by_dir:
+            process_label_meta(ROOT_PREFIX, dir_name, meta_by_dir[dir_name])
+        else:
+            print(f"[SKIP] {dir_name}: no label_original/ and no matching meta/*.json")
 
 
 if __name__ == "__main__":
