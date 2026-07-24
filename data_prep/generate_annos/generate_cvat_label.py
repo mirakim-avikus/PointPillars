@@ -40,10 +40,11 @@ def extract_annos_for_frames(frame_ids, pkl_data):
             print(f"Warning: Frame ID {frame_id} not found in PKL data.")
     return results
 
-def save_annos_dict_as_txt(data_root, data_name, annos_dict, output_dir, pcd_filenames):
+def save_annos_dict_as_txt(data_root, data_name, annos_dict, output_dir, frame_id_to_pcd):
     os.makedirs(os.path.join(data_root, data_name, output_dir), exist_ok=True)
-    
-    for (frame_id, annos), pcd_filename in zip(annos_dict.items(), pcd_filenames):
+
+    for frame_id, annos in annos_dict.items():
+        pcd_filename = frame_id_to_pcd[frame_id]
         file_name = f"{pcd_filename}.txt"
         file_path = os.path.join(data_root, data_name, output_dir, file_name)
 
@@ -70,22 +71,6 @@ def find_closest_imagefile(lidar_filename, image_dir_path, max_diff=200):
     if differences[closest_idx] >= max_diff:
         return None
     return img_list[closest_idx]
-
-def count_num_points_in_gt(lidar_points, dimensions, location, rotation_x, rotation_y, rotation_z):
-    # avikus frame
-    bboxes = np.concatenate([location, dimensions, rotation_z], axis = -1).reshape(1, -1)
-    bboxes_corners = bbox3d2corners(bboxes)
-    num_points_in_gt = []
-    for bbox in bboxes_corners:
-        num_points = 0
-        for point in lidar_points:
-            if (point[0] >= min(bbox[:, 0]) and point[0] <= max(bbox[:, 0]) and \
-                point[1] >= min(bbox[:, 1]) and point[1] <= max(bbox[:, 1]) and \
-                point[2] >= min(bbox[:, 2]) and point[2] <= max(bbox[:, 2])):
-                num_points += 1
-        num_points_in_gt.append(num_points)
-        print(F"num points : {num_points}")
-    return num_points_in_gt
 
 def project_lidar_to_image(lidar_points, img_path, Rt, K, D):
     # read image
@@ -236,8 +221,6 @@ def main(args):
 
             velodyne_path = lidar_filename + ".avikus.pcd"
 
-            num_points_in_gt = count_num_points_in_gt(lidar_points, np.array([w, h, l]), np.array([tx, ty, tz]), np.array([rx]), np.array([ry]), np.array([rz]))
-
             image = {
                 'image_shape': tuple(image.shape[:2]), # H, W
                 'image_path': image_path,
@@ -266,7 +249,6 @@ def main(args):
                 'rotation_y': np.array([ry]),
                 'rotation_z': np.array([rz]),
                 'difficulty': 0,
-                'num_points_in_gt': num_points_in_gt   # TODO
             }
 
             # image와 기타 정보들 들어가있음
@@ -286,9 +268,10 @@ def main(args):
                 }]
 
         frame_ids, pcd_filenames = load_frame_ids(frame_list_path)
+        frame_id_to_pcd = dict(zip(frame_ids, pcd_filenames))
         annos_dict = extract_annos_for_frames(frame_ids, kitti_like_dict)
         output_dir = "label"
-        save_annos_dict_as_txt(data_root, data_name, annos_dict, output_dir, pcd_filenames)
+        save_annos_dict_as_txt(data_root, data_name, annos_dict, output_dir, frame_id_to_pcd)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Configuration Parameters')
