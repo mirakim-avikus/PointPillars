@@ -9,7 +9,7 @@ import numpy as np
 import re
 
 from pointpillars.utils import setup_seed, vis_pc, read_calib, keep_bbox_from_lidar_range, RunningMetrics, iou3d_fn_lidar, iou_bev_fn_lidar, PRAccumulator
-from pointpillars.dataset import Avikus, get_dataloader
+from pointpillars.dataset import Avikus, get_dataloader, POINT_CLOUD_RANGE
 from pointpillars.model import PointPillars
 from pointpillars.loss import Loss
 from torch.utils.tensorboard import SummaryWriter
@@ -23,9 +23,8 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
 CLASSES = Avikus.CLASSES
 ID2NAME = {int(v): k for k, v in CLASSES.items()}
-IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS 
+IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS
 VISUALIZE = False
-POINT_CLOUD_RANGE = [5, -72., -10., 180., 72., 30.]
 
 # ---- 10 -> 4 class mapping (orig_id:0~9 -> mapped_id:0~3) ----
 CLASS_MAP_10_TO_4 = np.array([

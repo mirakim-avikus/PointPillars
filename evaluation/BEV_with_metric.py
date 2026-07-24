@@ -8,7 +8,7 @@ import yaml
 import numpy as np
 
 from pointpillars.utils import setup_seed, vis_pc, read_calib, keep_bbox_from_lidar_range, RunningMetrics, iou3d_fn_lidar, iou_bev_fn_lidar, PRAccumulator
-from pointpillars.dataset import Avikus, get_dataloader
+from pointpillars.dataset import Avikus, get_dataloader, POINT_CLOUD_RANGE
 from pointpillars.model import PointPillars
 from pointpillars.utils.process import pillars_to_bev_rgb_with_bboxes
 from pointpillars.ops.iou3d_module import boxes_iou_bev
@@ -23,10 +23,9 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
 CLASSES = Avikus.CLASSES
 ID2NAME = {int(v): k for k, v in CLASSES.items()}
-IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS 
+IOU_THRESHOLDS  = Avikus.IOU_THRESHOLDS
 SCORE_THRESHOLD = [0.1, 0.2, 0.3]
 VISUALIZE = False
-POINT_CLOUD_RANGE = [5, -72., -10., 180., 72., 30.]
 BEV = True
 
 # ---- 10 -> 4 class mapping (orig_id:0~9 -> mapped_id:0~3) ----

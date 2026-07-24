@@ -348,6 +348,10 @@ def global_rot_scale_trans(data_dict, rot_range, scale_ratio_range, translation_
     return data_dict
 
 
+# shared lidar point-cloud range: [x_min, y_min, z_min, x_max, y_max, z_max]
+POINT_CLOUD_RANGE = [5, -72., -10., 180., 72., 30.]
+
+
 def point_range_filter(data_dict, point_range):
     '''
     data_dict: dict(pts, gt_bboxes_3d, gt_labels, gt_names, difficulty)

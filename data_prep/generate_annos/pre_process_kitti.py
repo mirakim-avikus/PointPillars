@@ -15,8 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(CUR, '../')))
 from pointpillars.utils import read_points, write_points, read_calib, read_label, \
     write_pickle, remove_outside_points, get_points_num_in_bbox, \
     points_in_bboxes_v2
-from pointpillars.dataset import point_range_filter
-from train import POINT_CLOUD_RANGE
+from pointpillars.dataset import point_range_filter, POINT_CLOUD_RANGE
 
 # TODO : indicate truncation
 def judge_difficulty(annotation_dict, is_avikus):
