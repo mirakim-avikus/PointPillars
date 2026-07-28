@@ -315,10 +315,10 @@ class RunningMetrics:
             self.aoe_deg.append(float(e["aoe_deg"]))
             self.ase.append(float(e["ase"]))
         
-    def compute(self, class_weights=None, 
-                    w3d=0.7, wbev = 0.1, werr = 0.2, 
+    def compute(self, class_weights=None,
+                    w3d=0.4, wbev = 0.4, werr = 0.2,
                     ATE_cap = 1.0, AOE_cap_deg = 15.0, ASE_cap = 0.20,
-                    a = 0.5, b = 0.3, g = 0.2):
+                    a = 0.3, b = 0.5, g = 0.2):
         # per-class average AP
         ap3d_mean = {c: mean_or_zero(self.ap3d[c]) for c in self.cls}
         apbev_mean = {c: mean_or_zero(self.apbev[c]) for c in self.cls}
