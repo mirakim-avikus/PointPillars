@@ -291,7 +291,7 @@ def main(args):
 
                     if VISUALIZE:
                         calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
-                        calib_dir = os.path.join(*os.path.normpath(args.data_root).split('/'), data_key)
+                        calib_dir = os.path.join(os.path.normpath(args.data_root), data_key)
                         new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
                         old_yaml = os.path.join(calib_dir, "lidar.yaml")
                     
@@ -362,7 +362,7 @@ def main(args):
         if (epoch + 1) % args.ckpt_freq_epoch == 0:
             torch.save(pointpillars.state_dict(), os.path.join(saved_ckpt_path, f'epoch_{epoch+1}.pth'))
 
-        if epoch % 10 != 0:
+        if epoch % args.val_freq_epoch != 0:
             continue
         CLASS_LIST = [ID2NAME[i] for i in sorted(CLASSES.values())]
         acc3d = PRAccumulator(CLASS_LIST, ID2NAME, iou3d_fn_lidar, IOU_THRESHOLDS)
@@ -398,7 +398,7 @@ def main(args):
 
                     data_root = args.data_root
                     calib_info = read_calib(f"{os.path.normpath(data_root)}/{data_key}/calib_{data_key}.txt")
-                    calib_dir = os.path.join(*os.path.normpath(data_root).split('/'), data_key)
+                    calib_dir = os.path.join(os.path.normpath(data_root), data_key)
                     new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
                     old_yaml = os.path.join(calib_dir, "lidar.yaml")
 
@@ -550,6 +550,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_epoch', type=int, default=280)
     parser.add_argument('--log_freq', type=int, default=8)
     parser.add_argument('--ckpt_freq_epoch', type=int, default=20)
+    parser.add_argument('--val_freq_epoch', type=int, default=10)
     parser.add_argument('--ckpt_name', type=str, required=True)
     parser.add_argument('--pretrained', action='store_true', help='whether to use pretrained weight or not')
     parser.add_argument('--pretrained_weight', type=str, default="pretrained/epoch_160.pth", help='pretrained weight')
