@@ -38,8 +38,7 @@ def insert_cast_before(graph, node, input_idx, to_dtype=TensorProto.FLOAT16):
     graph.node.insert(node_idx, cast)
     node.input[input_idx] = cast_out
 
-def fix_mixed_precision(path_in, path_out):
-    m = onnx.load(path_in)
+def fix_mixed_precision(m, path_out):
     g = m.graph
     init_dtype, vi_dtype = build_dtype_maps(m)
 
@@ -75,11 +74,9 @@ def main():
     path_fp32 = os.path.abspath(args.model)
     base, ext = os.path.splitext(path_fp32)
 
-    path_fp16_in  = f"{base}_fp16.onnx"
     path_fp16_out = f"{base}_fp16_mixed.onnx"
 
     print(f"Input FP32 Model: {path_fp32}")
-    print(f"Output FP16 Model: {path_fp16_in}")
     print(f"Output Mixed Model: {path_fp16_out}")
 
     model = onnx.load(path_fp32)
@@ -89,12 +86,11 @@ def main():
         disable_shape_infer=True,
         op_block_list=['Cast','Mul','Add','Sub','Div','Pow']
     )
-
-    onnx.save(model_fp16, path_fp16_in)
     print("[FP32 → FP16] Done")
 
-    fix_mixed_precision(path_fp16_in, path_fp16_out)
+    fix_mixed_precision(model_fp16, path_fp16_out)
     print("All conversions completed successfully!")
+    print(f"Mixed-precision model saved to: {path_fp16_out}")
 
 if __name__ == "__main__":
     main()

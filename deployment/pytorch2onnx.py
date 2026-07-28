@@ -39,7 +39,7 @@ def main(args):
                                     'input_coors_batch': {0: 'pillar_num'}, 
                                     'input_npoints_per_pillar': {0: 'pillar_num'}},
                       output_names=['output_x'])
-    print('finished')
+    print(f'finished, saved to {args.saved_onnx_path}')
 
 
 if __name__ == '__main__':
