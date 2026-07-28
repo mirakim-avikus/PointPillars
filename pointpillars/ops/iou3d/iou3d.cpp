@@ -7,13 +7,9 @@ Written by Shaoshuai Shi
 All Rights Reserved 2019-2020.
 */
 
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-#include <torch/extension.h>
-#include <torch/serialize/tensor.h>
-
 #include <cstdint>
 #include <vector>
+#include "iou3d.h"
 
 #define CHECK_CUDA(x) \
   TORCH_CHECK(x.device().is_cuda(), #x, " must be a CUDAtensor ")
@@ -113,6 +109,12 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep,
                          boxes_num * col_blocks * sizeof(unsigned long long)));
   nmsLauncher(boxes_data, mask_data, boxes_num, nms_overlap_thresh);
 
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+      printf("CUDA kernel launch error: %s\n", cudaGetErrorString(err));
+  }
+  cudaDeviceSynchronize();
+
   // unsigned long long mask_cpu[boxes_num * col_blocks];
   // unsigned long long *mask_cpu = new unsigned long long [boxes_num *
   // col_blocks];
@@ -144,6 +146,67 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep,
   delete[] remv_cpu;
   if (cudaSuccess != cudaGetLastError()) printf("Error!\n");
 
+  return num_to_keep;
+}
+
+int nms_cpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh, int device_id=0) {
+  // boxes : (N, 5) [x1, y1, x2, y2, ry]
+  // keep : (N)
+  CHECK_CONTIGUOUS(keep);
+
+  const int boxes_num = boxes.size(0);
+  auto boxes_acc = boxes.accessor<float, 2>(); //(N, 5)
+  int64_t* keep_data = keep.data_ptr<int64_t>();
+
+  const int col_blocks = (boxes_num + THREADS_PER_BLOCK_NMS - 1) / THREADS_PER_BLOCK_NMS;
+  std::vector<unsigned long long> mask_cpu(boxes_num * col_blocks, 0);
+
+  // generate mask : nms_gpu(): mask[cur_box_idx * col_blocks + col_start] = t
+  for (int i = 0; i < boxes_num; i++) {
+    float x1_i = boxes_acc[i][0];
+    float y1_i = boxes_acc[i][1];
+    float x2_i = boxes_acc[i][2];
+    float y2_i = boxes_acc[i][3];
+    float area_i = (x2_i - x1_i + 1) * (y2_i - y1_i + 1);
+
+    for (int j = i + 1; j < boxes_num; j++) {
+      float x1_j = boxes_acc[j][0];
+      float y1_j = boxes_acc[j][1];
+      float x2_j = boxes_acc[j][2];
+      float y2_j = boxes_acc[j][3];
+      float area_j = (x2_j - x1_j + 1) * (y2_j - y1_j + 1);
+
+      float xx1 = std::max(x1_i, x1_j);
+      float yy1 = std::max(y1_i, y1_j);
+      float xx2 = std::max(x2_i, x2_j);
+      float yy2 = std::max(y2_i, y2_j);
+      float w = std::max(0.0f, xx2 - xx1 + 1);
+      float h = std::max(0.0f, yy2 - yy1 + 1);
+      float inter = w * h;
+      float iou = inter / (area_i + area_j - inter);
+
+      if (iou > nms_overlap_thresh) {
+        int block_j = j / THREADS_PER_BLOCK_NMS;
+        int offset_j = j % THREADS_PER_BLOCK_NMS;
+        mask_cpu[i * col_blocks + block_j] |= 1ULL << offset_j;
+      }
+    }
+  }
+
+  std::vector<unsigned long long> remv(col_blocks, 0);
+  int num_to_keep = 0;
+
+  for (int i = 0; i < boxes_num; i++) {
+    int block_i = i / THREADS_PER_BLOCK_NMS;
+    int offset_i = i % THREADS_PER_BLOCK_NMS;
+
+    if (!(remv[block_i] & (1ULL << offset_i))) {
+      keep_data[num_to_keep++] = i;
+      for (int j = block_i; j < col_blocks; j++) {
+        remv[j] |= mask_cpu[i * col_blocks + j];
+      }
+    }
+  }
   return num_to_keep;
 }
 

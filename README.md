@@ -211,6 +211,36 @@ python evaluation/test.py --ckpt pretrained/epoch_160.pth --pc_path pointpillars
                --img_path pointpillars/dataset/demo_data/test/000002.png
 ```
 
+## [Model Conversion]
+
+The model is split for export purposes into `PointPillarsPre` (voxelization), `PointPillarsCore` (encoder → backbone → neck → head, the ONNX-exportable part), and `PointPillarsPos` (NMS post-processing) — see `pointpillars/model/pointpillars_export.py`. Only `PointPillarsCore` supports batch_size > 1 during training (`PointPillars` in `pointpillars/model/pointpillars.py`); the export path only supports batch_size=1.
+
+1. PyTorch → ONNX
+
+    ```
+    cd PointPillars/deployment
+    python pytorch2onnx.py --ckpt ../pretrained/epoch_160.pth --saved_onnx_path ../pretrained/model.onnx
+    ```
+
+2. (Optional) FP32 → FP16 mixed-precision ONNX, in one step
+
+    ```
+    cd PointPillars/deployment
+    ./export_onnx_fp16.sh ../pretrained/epoch_160.pth ../pretrained/model.onnx
+    ```
+
+3. (Optional) ONNX inference / sanity check against the PyTorch output
+
+    ```
+    cd PointPillars/deployment
+    python onnx_infer.py --pc_path ../pointpillars/dataset/demo_data/val/000134.bin --onnx_path ../pretrained/model.onnx
+    python pytorch_infer.py --ckpt ../pretrained/epoch_160.pth --pc_path ../pointpillars/dataset/demo_data/val/000134.bin
+    ```
+
+4. (Optional) ONNX → TensorRT + C++ inference
+
+    A TensorRT/C++ inference pipeline (voxelization + NMS reimplemented in CUDA/C++) lives in `deployment/trt_infer/`; see `docs/deployment_log.md` for the ONNX2TRT conversion notes and troubleshooting (ScatterND plugin support, dynamic shapes, etc).
+
 ## Acknowledements
 
 Thanks for the open source code [mmcv](https://github.com/open-mmlab/mmcv), [mmdet](https://github.com/open-mmlab/mmdetection) and [mmdet3d](https://github.com/open-mmlab/mmdetection3d).

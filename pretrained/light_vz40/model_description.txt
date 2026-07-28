@@ -1,0 +1,5 @@
+[model description]
+1. version light
+2. voxel z size 40
+3. batch size 4
+4. num_data 520

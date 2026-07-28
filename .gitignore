@@ -7,6 +7,9 @@ tmp/
 results/
 *.sh
 .idea
+.vscode/
 inference.sh
 test_avikus.py
 data
+pretrained/*.trt
+pretrained/*.onnx

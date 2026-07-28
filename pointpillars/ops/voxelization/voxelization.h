@@ -1,4 +1,5 @@
 #pragma once
+#include <iostream>
 #include <torch/extension.h>
 
 typedef enum { SUM = 0, MEAN = 1, MAX = 2 } reduce_t;
@@ -12,7 +13,6 @@ int hard_voxelize_cpu(const at::Tensor &points, at::Tensor &voxels,
                       const int max_points, const int max_voxels,
                       const int NDim = 3);
 
-#ifdef WITH_CUDA
 int hard_voxelize_gpu(const at::Tensor &points, at::Tensor &voxels,
                       at::Tensor &coors, at::Tensor &num_points_per_voxel,
                       const std::vector<float> voxel_size,
@@ -26,7 +26,6 @@ int nondisterministic_hard_voxelize_gpu(const at::Tensor &points, at::Tensor &vo
                                         const std::vector<float> coors_range,
                                         const int max_points, const int max_voxels,
                                         const int NDim = 3);
-#endif
 
 // Interface for Python
 inline int hard_voxelize(const at::Tensor &points, at::Tensor &voxels,
@@ -36,8 +35,8 @@ inline int hard_voxelize(const at::Tensor &points, at::Tensor &voxels,
                          const int max_points, const int max_voxels,
                          const int NDim = 3, const bool deterministic = true) {
   if (points.device().is_cuda()) {
-#ifdef WITH_CUDA
     if (deterministic) {
+      std::cout << "with cuda!" << std::endl;
       return hard_voxelize_gpu(points, voxels, coors, num_points_per_voxel,
                                voxel_size, coors_range, max_points, max_voxels,
                                NDim);
@@ -45,9 +44,7 @@ inline int hard_voxelize(const at::Tensor &points, at::Tensor &voxels,
     return nondisterministic_hard_voxelize_gpu(points, voxels, coors, num_points_per_voxel,
                                                voxel_size, coors_range, max_points, max_voxels,
                                                NDim);
-#else
     AT_ERROR("Not compiled with GPU support");
-#endif
   }
   return hard_voxelize_cpu(points, voxels, coors, num_points_per_voxel,
                            voxel_size, coors_range, max_points, max_voxels,
