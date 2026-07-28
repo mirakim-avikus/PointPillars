@@ -30,18 +30,18 @@ def read_points(file_path, dim=4):
         header = content[:header_end]
         data = content[header_end:]
 
-        lines = header.split(b'\n')
+        lines = [line.strip() for line in header.split(b'\n')]
         for line in lines:
             if line.startswith(b'FIELDS'):
-                fields = line.strip().split()[1:]
+                fields = line.split()[1:]
             elif line.startswith(b'SIZE'):
-                sizes = list(map(int, line.strip().split()[1:]))
+                sizes = list(map(int, line.split()[1:]))
             elif line.startswith(b'TYPE'):
-                types = line.strip().split()[1:]
+                types = line.split()[1:]
             elif line.startswith(b'COUNT'):
-                counts = list(map(int, line.strip().split()[1:]))
+                counts = list(map(int, line.split()[1:]))
             elif line.startswith(b'POINTS'):
-                num_points = int(line.strip().split()[1])
+                num_points = int(line.split()[1])
 
         assert all(field in fields for field in [b'x', b'y', b'z'])
         assert b'intensity' in fields or b'i' in fields
@@ -86,18 +86,19 @@ def write_points(lidar_points, file_path):
         num_points = lidar_points.shape[0]
 
         # PCD 헤더 작성 (binary format)
-        header = f"""# .PCD v0.7 - Point Cloud Data file format
-            VERSION 0.7
-            FIELDS x y z intensity
-            SIZE 4 4 4 4
-            TYPE F F F F
-            COUNT 1 1 1 1
-            WIDTH {num_points}
-            HEIGHT 1
-            VIEWPOINT 0 0 0 1 0 0 0
-            POINTS {num_points}
-            DATA binary
-            """
+        header = "\n".join([
+            "# .PCD v0.7 - Point Cloud Data file format",
+            "VERSION 0.7",
+            "FIELDS x y z intensity",
+            "SIZE 4 4 4 4",
+            "TYPE F F F F",
+            "COUNT 1 1 1 1",
+            f"WIDTH {num_points}",
+            "HEIGHT 1",
+            "VIEWPOINT 0 0 0 1 0 0 0",
+            f"POINTS {num_points}",
+            "DATA binary",
+        ])
 
         # header를 먼저 텍스트로 쓰고, 그 뒤에 binary 데이터 추가
         with open(file_path, 'wb') as f:

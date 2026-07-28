@@ -249,13 +249,6 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False, arg
                 compensate_yaw=False
             )
 
-        # 여기서 pcd visualize 함 해야 함
-        saved_reduced_path = os.path.join(data_root, split, 'velodyne_reduced')
-        os.makedirs(saved_reduced_path, exist_ok=True)
-        if is_avikus:
-            saved_reduced_points_name = os.path.join(saved_reduced_path, f'{lidar_ts}.avikus.pcd')
-        else:
-            saved_reduced_points_name = os.path.join(saved_reduced_path, f'{id}.bin')
         if lidar_points is None or lidar_points.shape[0] == 0:
             continue
         tmp_dict = {'pts': lidar_points}
@@ -265,7 +258,14 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False, arg
             num_invalid += 1
             continue
 
-        write_points(filtered_pts, saved_reduced_points_name)
+        # Avikus.__getitem__ reads velodyne_path directly (e.g. pcd-128/pcd/...)
+        # rather than substituting in pts_prefix like Kitti does, so this reduced
+        # copy is only ever consumed by the Kitti dataset class.
+        if not is_avikus:
+            saved_reduced_path = os.path.join(data_root, split, 'velodyne_reduced')
+            os.makedirs(saved_reduced_path, exist_ok=True)
+            saved_reduced_points_name = os.path.join(saved_reduced_path, f'{id}.bin')
+            write_points(filtered_pts, saved_reduced_points_name)
 
         if label:            
             annotation_dict['difficulty'] = judge_difficulty(annotation_dict, is_avikus)

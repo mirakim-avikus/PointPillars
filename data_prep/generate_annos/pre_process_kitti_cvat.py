@@ -122,21 +122,21 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
         else:
             tr_velo_to_cam = calib_dict['Tr_velo_to_cam']
 
+        # Avikus.__getitem__ reads velodyne_path directly rather than substituting
+        # in pts_prefix like Kitti does, so this reduced copy is only ever
+        # consumed by the Kitti dataset class - skip writing it for avikus.
         reduced_lidar_points = remove_outside_points(
-            points=lidar_points, 
-            r0_rect=calib_dict['R0_rect'], 
-            tr_velo_to_cam=tr_velo_to_cam, 
-            P2=calib_dict['P2'], 
+            points=lidar_points,
+            r0_rect=calib_dict['R0_rect'],
+            tr_velo_to_cam=tr_velo_to_cam,
+            P2=calib_dict['P2'],
             image_shape=image_shape)
 
-        # 여기서 pcd visualize 함 해야 함
-        saved_reduced_path = os.path.join(data_root, split, 'velodyne_reduced')
-        os.makedirs(saved_reduced_path, exist_ok=True)
-        if 'avikus' in prefix:
-            saved_reduced_points_name = os.path.join(saved_reduced_path, f'{lidar_ts}.avikus.pcd')
-        else:
+        if 'avikus' not in prefix:
+            saved_reduced_path = os.path.join(data_root, split, 'velodyne_reduced')
+            os.makedirs(saved_reduced_path, exist_ok=True)
             saved_reduced_points_name = os.path.join(saved_reduced_path, f'{id}.bin')
-        write_points(reduced_lidar_points, saved_reduced_points_name)
+            write_points(reduced_lidar_points, saved_reduced_points_name)
 
         if label:            
             if 'avikus' in prefix:

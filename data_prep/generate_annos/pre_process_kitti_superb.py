@@ -112,17 +112,15 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):   
         tr_velo_to_cam[:3, :3] = R
         tr_velo_to_cam[:3, -1] = tvec
 
+        # Avikus.__getitem__ reads velodyne_path directly rather than substituting
+        # in pts_prefix like Kitti does, so this reduced copy is never read back -
+        # kept in memory only, for the num_points_in_gt computation below.
         reduced_lidar_points = remove_outside_points(
-            points=lidar_points, 
-            r0_rect=calib_dict['R0_rect'], 
-            tr_velo_to_cam=tr_velo_to_cam, 
-            P2=calib_dict['P2'], 
+            points=lidar_points,
+            r0_rect=calib_dict['R0_rect'],
+            tr_velo_to_cam=tr_velo_to_cam,
+            P2=calib_dict['P2'],
             image_shape=image_shape)
-
-        saved_reduced_path = os.path.join(data_root, split, 'velodyne_reduced')
-        os.makedirs(saved_reduced_path, exist_ok=True)
-        saved_reduced_points_name = os.path.join(saved_reduced_path, f'{lidar_ts}.avikus.pcd')
-        write_points(reduced_lidar_points, saved_reduced_points_name)
 
         if label:
             label_path = os.path.join(data_root, data_key, "label", f'{lidar_ts}.txt')
