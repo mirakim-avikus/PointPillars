@@ -35,9 +35,14 @@ def main(args):
         calib_dir = os.path.join(data_root, data_key)
 
         new_calib = os.path.join(calib_dir, "new_lidar.yaml")
+        old_calib = os.path.join(calib_dir, "lidar.yaml")
+
         if os.path.exists(new_calib):
             calib_path = new_calib
-    
+        else:
+            calib_path = old_calib
+            print(f"[WARNING] new_lidar.yaml not found. Using fallback: {calib_path}")
+
         with open(calib_path, 'rb') as f:
             calib = yaml.safe_load(f)
 
