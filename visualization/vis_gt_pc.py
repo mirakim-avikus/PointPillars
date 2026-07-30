@@ -3,16 +3,14 @@ import numpy as np
 import os
 
 from pointpillars.dataset import Avikus
-from pointpillars.utils import read_points, read_calib, read_label, bbox_avikus2lidar, vis_pc
+from pointpillars.utils import read_points, read_label, vis_pc
 
 
 def vis_gt_pc(root, data_name, id):
     lidar_path = os.path.join(root, data_name, 'pcd', f'{id}.avikus.pcd')
-    calib_path = os.path.join(root, data_name, f'calib_{data_name}.txt')
     label_path = os.path.join(root, data_name, 'label', f'{id}.txt')
 
     lidar_points = read_points(lidar_path)
-    calib_dict = read_calib(calib_path)
     annotation_dict = read_label(label_path)
 
     names = annotation_dict['name']
@@ -20,10 +18,10 @@ def vis_gt_pc(root, data_name, id):
     location = annotation_dict['location']
     rotation_y = annotation_dict['rotation_y']
 
-    bboxes_camera = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1)
-    tr_velo_to_cam = calib_dict['Tr_velo_to_cam']
-    r0_rect = calib_dict['R0_rect']
-    bboxes_lidar = bbox_avikus2lidar(bboxes_camera, tr_velo_to_cam, r0_rect)
+    # location/dimensions/rotation_y are already in lidar coordinates for this
+    # label format - same as Avikus.__getitem__ builds gt_bboxes_3d for
+    # training, with no camera->lidar transform applied.
+    bboxes_lidar = np.concatenate([location, dimensions, rotation_y[:, None]], axis=-1).astype(np.float32)
 
     labels = [Avikus.CLASSES.get(name, -1) for name in names]
     print(f'{len(labels)} labels: {list(zip(names, labels))}')
