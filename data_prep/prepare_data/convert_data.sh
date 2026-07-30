@@ -19,7 +19,20 @@ for subdir in "$DATA_ROOT"/*; do
         # Rename raw capture folders into the layout data_prep/generate_annos/
         # expects: camera/ -> images/, lidar/flippedData/ -> pcd/. lidar/Data/
         # (pre-flip) and lidar/Status are left behind, unused by the pipeline.
+        # Gated on camera/ still existing (i.e. this session hasn't been
+        # through this conversion yet), so it and the z conversion below only
+        # ever run once per session.
         if [ -d "$subdir/camera" ] && [ ! -d "$subdir/images" ]; then
+            # Raw captures that arrive with label/*.txt already populated skip
+            # generate_superb_label.py/generate_cvat_label.py (nothing to
+            # trigger them), so their z never gets converted from center to
+            # bottom-center like those scripts do for SuperbAI/CVAT sources.
+            # bbox3d2corners (and therefore Avikus.__getitem__'s
+            # gt_bboxes_3d for training) expects bottom-center.
+            if [ -d "$subdir/label" ]; then
+                python3 convert_label_z_center_to_bottom.py --dataset_dir="$subdir"
+            fi
+
             mv "$subdir/camera" "$subdir/images"
             echo "  camera/ -> images/"
         fi
