@@ -8,6 +8,21 @@ from pointpillars.utils import bbox3d2corners
 COLORS = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0]]
 COLORS_IMG = [[0, 0, 255], [0, 255, 0], [255, 0, 0], [0, 255, 255]]
 
+# Avikus.CLASSES order: jetski, smallboat, mediumboat, c-marker, yacht, pole,
+# dinghyboat, bigboat, bridgepillar, buoy
+COLORS_10 = [
+    [1, 0, 0],      # 0 jetski
+    [1, 0.5, 0],    # 1 smallboat
+    [1, 1, 0],      # 2 mediumboat
+    [0, 1, 1],      # 3 c-marker
+    [0.5, 0, 1],    # 4 yacht
+    [1, 0, 1],      # 5 pole
+    [0.6, 0.3, 0],  # 6 dinghyboat
+    [1, 0.7, 0.7],  # 7 bigboat
+    [0, 1, 0],      # 8 bridgepillar
+    [0, 0.5, 1],    # 9 buoy
+]
+
 LINES = [
         [0, 1],
         [1, 2], 
@@ -50,6 +65,7 @@ def bbox_obj(points, color=[1, 0, 0]):
 def vis_core(plys):
     vis = o3d.visualization.Visualizer()
     vis.create_window()
+    vis.get_render_option().point_size = 2.0
 
     PAR = os.path.dirname(os.path.abspath(__file__))
     ctr = vis.get_view_control()
@@ -96,10 +112,10 @@ def vis_pc(pc, bboxes=None, labels=None):
         if labels is None:
             color = [1, 1, 0]
         else:
-            if 0 <= labels[i] < 3:
-                color = COLORS[labels[i]]
+            if 0 <= labels[i] < len(COLORS_10):
+                color = COLORS_10[labels[i]]
             else:
-                color = COLORS[-1]
+                color = COLORS_10[-1]
         vis_objs.append(bbox_obj(bbox, color=color))
     vis_core(vis_objs)
 
