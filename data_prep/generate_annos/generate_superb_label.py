@@ -118,9 +118,9 @@ def read_calib(calib_path):
         D = np.array([camera['k1'], camera['k2'], camera['k3'], camera['k4']], dtype=np.float32)
     return Rt, K, D
 
-def process_label_original(root_prefix, dir_name):
-    """label_original/*.txt (raw KITTI export, z=bbox center) -> label/*.txt (z=bbox bottom center)"""
-    full_path = os.path.join(root_prefix, dir_name, "label_original")
+def process_label_original(root_prefix, dir_name, input_subdir="label_original"):
+    """<input_subdir>/*.txt (raw KITTI export, z=bbox center) -> label/*.txt (z=bbox bottom center)"""
+    full_path = os.path.join(root_prefix, dir_name, input_subdir)
     OUT_DIR = os.path.join(root_prefix, dir_name, "label")
     os.makedirs(OUT_DIR, exist_ok=True)
     label_files = glob.glob(os.path.join(full_path, "*.txt"))
@@ -264,6 +264,32 @@ def process_label_meta(ROOT_PREFIX, dir, label_meta):
             print(f"Saved {output_file}")
 
 
+# Touch this empty file inside a session dir (next to its label/) to signal
+# "this label/ is a raw export that still needs label_original-style z
+# conversion" instead of manually renaming label/ -> label_original/.
+NEEDS_LABEL_CONVERSION_FLAG = ".needs_label_conversion"
+
+
+def promote_flagged_label(root_prefix, dir_name):
+    """If NEEDS_LABEL_CONVERSION_FLAG is present, rename label/ -> label.bak/
+    so process_label_original can regenerate label/ from it, then consume
+    the flag so re-running annos.sh doesn't redo this."""
+    session_dir = os.path.join(root_prefix, dir_name)
+    flag_path = os.path.join(session_dir, NEEDS_LABEL_CONVERSION_FLAG)
+    if not os.path.exists(flag_path):
+        return False
+
+    label_dir = os.path.join(session_dir, "label")
+    if not os.path.isdir(label_dir):
+        print(f"[{dir_name}] WARNING: {NEEDS_LABEL_CONVERSION_FLAG} present but no label/ dir, skip")
+        return False
+
+    os.rename(label_dir, os.path.join(session_dir, "label.bak"))
+    os.remove(flag_path)
+    print(f"[{dir_name}] {NEEDS_LABEL_CONVERSION_FLAG} found: label/ -> label.bak/, regenerating label/")
+    return True
+
+
 def main(args):
     args.data_root = os.path.normpath(args.data_root)
     ROOT_PREFIX = args.data_root
@@ -279,7 +305,11 @@ def main(args):
         if not os.path.isdir(os.path.join(ROOT_PREFIX, dir_name)):
             continue
 
-        if os.path.isdir(os.path.join(ROOT_PREFIX, dir_name, "label_original")):
+        flagged = promote_flagged_label(ROOT_PREFIX, dir_name)
+
+        if flagged:
+            process_label_original(ROOT_PREFIX, dir_name, input_subdir="label.bak")
+        elif os.path.isdir(os.path.join(ROOT_PREFIX, dir_name, "label_original")):
             process_label_original(ROOT_PREFIX, dir_name)
         elif dir_name in meta_by_dir:
             process_label_meta(ROOT_PREFIX, dir_name, meta_by_dir[dir_name])
