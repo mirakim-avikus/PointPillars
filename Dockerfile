@@ -1,6 +1,13 @@
 FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Some networks TLS-intercept traffic from Docker's bridge subnet, which
+# breaks apt's handshake with this HTTPS-only repo. We don't need it anyway:
+# everything below comes from the plain-HTTP Ubuntu archive/security mirrors,
+# and CUDA itself is already baked into the base image.
+RUN rm -f /etc/apt/sources.list.d/cuda*.list
+
 RUN apt-get update && apt-get install -y \
     python3.8 python3-pip python3.8-dev python3.8-distutils \
     git wget curl build-essential cmake libgl1-mesa-glx \
