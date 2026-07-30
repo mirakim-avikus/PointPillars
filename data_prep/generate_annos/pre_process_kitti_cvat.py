@@ -108,7 +108,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):
 
         lidar_points = read_points(lidar_path)
         if 'avikus' in prefix:
-            calib_path_yaml = os.path.join(data_root, data_name, "new_lidar.yaml")
+            calib_path_yaml = os.path.join(data_root, data_name, "lidar.yaml")
             with open(calib_path_yaml, 'rb') as f:
                 calib_yaml_dict = yaml.safe_load(f)
 

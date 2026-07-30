@@ -25,7 +25,7 @@ def main(args):
     for data_name in os.listdir(data_root):
         if not os.path.isdir(os.path.join(data_root, data_name)) or data_name in EXCLUDE_PATH:
             continue
-        calib_path = os.path.join(data_root, data_name, 'new_lidar.yaml')
+        calib_path = os.path.join(data_root, data_name, 'lidar.yaml')
 
         with open(calib_path, 'rb') as f:
             calib = yaml.safe_load(f)

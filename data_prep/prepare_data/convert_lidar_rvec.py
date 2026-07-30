@@ -4,11 +4,14 @@ import yaml
 import argparse
 import os
 
-def convert_rvec(lidar_yaml_path):
+def convert_rvec(lidar_yaml_path, output_path=None):
     # 디렉토리 및 파일 경로 설정
     lidar_yaml_path = os.path.abspath(lidar_yaml_path)
     dir_path = os.path.dirname(lidar_yaml_path)
-    output_path = os.path.join(dir_path, 'new_lidar.yaml')
+    if output_path is None:
+        output_path = os.path.join(dir_path, 'lidar.yaml')
+    else:
+        output_path = os.path.abspath(output_path)
 
     # 1. YAML 파일 읽기
     with open(lidar_yaml_path, 'r') as f:
@@ -62,5 +65,6 @@ def convert_rvec(lidar_yaml_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='camera2lidar rvec 변환 후 저장')
     parser.add_argument('--lidar_yaml_path', type=str, help='lidar.yaml의 경로')
+    parser.add_argument('--output_path', type=str, default=None, help='결과 저장 경로 (기본값: 입력과 같은 폴더의 lidar.yaml)')
     args = parser.parse_args()
-    convert_rvec(args.lidar_yaml_path)
+    convert_rvec(args.lidar_yaml_path, args.output_path)

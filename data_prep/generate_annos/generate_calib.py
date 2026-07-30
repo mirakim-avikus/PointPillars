@@ -34,9 +34,9 @@ def main(args):
 
         calib_dir = os.path.join(data_root, data_key)
 
-        calib_path = os.path.join(calib_dir, "new_lidar.yaml")
+        calib_path = os.path.join(calib_dir, "lidar.yaml")
         if not os.path.exists(calib_path):
-            print(f"[SKIP] {data_key}: no new_lidar.yaml")
+            print(f"[SKIP] {data_key}: no lidar.yaml")
             continue
 
         with open(calib_path, 'rb') as f:

@@ -118,7 +118,7 @@ def main(args):
         frame_list_path = os.path.join(data_root, data_name, 'frame_list.txt') 
         image_dir_path = os.path.join(data_root, data_name, 'images')
         lidar_dir_path = os.path.join(data_root, data_name, 'pcd')
-        calib_path = os.path.join(data_root, data_name, 'new_lidar.yaml')
+        calib_path = os.path.join(data_root, data_name, 'lidar.yaml')
 
         frame_dict = {}
         with open(frame_list_path, 'r') as f:

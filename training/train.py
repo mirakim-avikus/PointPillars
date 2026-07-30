@@ -292,11 +292,7 @@ def main(args):
                     if VISUALIZE:
                         calib_info = read_calib(f"{os.path.normpath(args.data_root)}/{data_key}/calib_{data_key}.txt")
                         calib_dir = os.path.join(os.path.normpath(args.data_root), data_key)
-                        new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
-                        old_yaml = os.path.join(calib_dir, "lidar.yaml")
-                    
-                        # TODO: temporary fix — replace with permanent calibration loader
-                        calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
+                        calib_path_yaml = os.path.join(calib_dir, "lidar.yaml")
                         tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
                         device = bbox_cls_pred.device
@@ -399,11 +395,7 @@ def main(args):
                     data_root = args.data_root
                     calib_info = read_calib(f"{os.path.normpath(data_root)}/{data_key}/calib_{data_key}.txt")
                     calib_dir = os.path.join(os.path.normpath(data_root), data_key)
-                    new_yaml = os.path.join(calib_dir, "new_lidar.yaml")
-                    old_yaml = os.path.join(calib_dir, "lidar.yaml")
-
-                    # TODO: temporary fix — replace with permanent calibration loader
-                    calib_path_yaml = new_yaml if os.path.exists(new_yaml) else old_yaml
+                    calib_path_yaml = os.path.join(calib_dir, "lidar.yaml")
                     tr_velo_to_cam, r0_rect, P2, K, D = get_parameters(calib_path_yaml, calib_info)
 
                     res_filter = keep_bbox_from_lidar_range(results[i], pcd_limit_range)

@@ -152,14 +152,7 @@ def process_label_meta(ROOT_PREFIX, dir, label_meta):
         label_path = os.path.join(ROOT_PREFIX, label_meta["label_path"][0])
 
         CALIB_DIR = os.path.join(ROOT_PREFIX, dir)  # 공통 경로
-        new_yaml = os.path.join(CALIB_DIR, "new_lidar.yaml")
-        old_yaml = os.path.join(CALIB_DIR, "lidar.yaml")
-
-        if os.path.exists(new_yaml):
-            CALIB_PATH = new_yaml
-        else:
-            print(f"[WARNING] new_lidar.yaml not found. Using fallback: {old_yaml}")
-            CALIB_PATH = old_yaml
+        CALIB_PATH = os.path.join(CALIB_DIR, "lidar.yaml")
 
         IMAGE_DIR = os.path.join(ROOT_PREFIX, dir, "images")
         PCD_DIR = os.path.join(ROOT_PREFIX, dir, "pcd")

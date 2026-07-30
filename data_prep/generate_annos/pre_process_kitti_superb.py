@@ -92,12 +92,7 @@ def create_data_info_pkl(data_root, data_type, prefix, label=True, db=False):   
         cur_info_dict['calib'] = calib_dict
 
         lidar_points = read_points(lidar_path)
-        calib_path_yaml = os.path.join(data_root, data_key, "new_lidar.yaml")
-        fallback_yaml = os.path.join(data_root, data_key, "lidar.yaml")
-
-        # new_lidar.yaml이 없으면 lidar.yaml 사용
-        if not os.path.exists(calib_path_yaml):
-            calib_path_yaml = fallback_yaml
+        calib_path_yaml = os.path.join(data_root, data_key, "lidar.yaml")
 
         print("Using calibration file:", calib_path_yaml)
 
