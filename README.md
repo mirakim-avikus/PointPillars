@@ -102,6 +102,20 @@ pip install .
     ```
   - `DATA_ROOT`를 `data_root`에 맞게 수정
 
+---
+### 4) Annotation 확인 (3D 시각화)
+  - `annos.sh` 실행 후 생성된 pcd + label을 3D로 확인 (Open3D 창, cv2 불필요)
+    ```bash
+    cd visualization
+    python3 vis_gt_pc.py --root <data_root> --data_name <data_name> --id <frame_id>
+    ```
+  - 예시
+    ```bash
+    python3 vis_gt_pc.py --root /workspace/test_data --data_name batch04 --id 1737318282526
+    ```
+  - `--root`: `data_root` (session 폴더들을 담고 있는 상위 폴더)
+  - `--data_name`: session 폴더명 (예: `batch04`)
+  - `--id`: 확인할 frame의 timestamp (`<data_name>/pcd/<id>.avikus.pcd`, `<data_name>/label/<id>.txt` 기준)
 
 ---
 
@@ -111,7 +125,7 @@ pip install .
 training/       train.py, train.sh
 evaluation/     evaluate.py, test.py, metric.py, AP_calculator.py, BEV_with_metric.py,
                 extract_metrics.sh, find_most_empty_labels.sh, inference.sh
-visualization/  bev_sorting.py, make_video.sh, test_o3d.py, vis_data_gt.py
+visualization/  bev_sorting.py, make_video.sh, test_o3d.py, vis_data_gt.py, vis_gt_pc.py
 data_prep/
   generate_annos/  annotation-generation pipeline (see data_prep/generate_annos/README.md)
   prepare_data/    convert_data.sh, convert_lidar_rvec.py, pcd_flipper.py
