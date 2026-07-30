@@ -60,4 +60,10 @@ run_step "set_anchor.py" python3 "$SCRIPT_DIR/set_anchor.py" --data_root "$DATA_
 # ===============================
 # 결과 확인 (임의 프레임 3D 시각화)
 # ===============================
-run_step "vis_gt_pc.py" python3 "$SCRIPT_DIR/../../visualization/vis_gt_pc.py" --root "$DATA_ROOT"
+# Not run_step: data preprocessing is already done and correct at this point,
+# so a visualization failure (e.g. no DISPLAY) shouldn't fail the pipeline -
+# just warn so the user knows to check it separately.
+python3 "$SCRIPT_DIR/../../visualization/vis_gt_pc.py" --root "$DATA_ROOT"
+if [ $? -ne 0 ]; then
+    echo "[annos.sh] WARNING: data preprocessing is READY, but vis_gt_pc.py failed to show the visualization. Check what's wrong (e.g. DISPLAY, xhost) and rerun visualization/vis_gt_pc.py manually." >&2
+fi
