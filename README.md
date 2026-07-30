@@ -35,10 +35,10 @@ docker exec -it pointpillars bash
 
 ### 2) Install PointPillars package
 
-Install PointPillars as a python package and all its dependencies as follows (run this inside the container):
+Install PointPillars as a python package and all its dependencies as follows (run this inside the container - `/workspace` there is already the repo root, bind-mounted from the host's `PointPillars/`, so there's no extra `PointPillars/` to `cd` into):
 
 ```
-cd PointPillars/
+cd /workspace
 pip install -r requirements.txt
 python setup.py build_ext --inplace
 pip install .
@@ -141,7 +141,7 @@ docs/           log.md - original implementation notes
 2. Pre-process KITTI datasets First
 
     ```
-    cd PointPillars/
+    cd /workspace
     python data_prep/generate_annos/pre_process_kitti.py --data_root your_path_to_kitti
     ```
 
@@ -170,21 +170,21 @@ docs/           log.md - original implementation notes
 ## [Training]
 
 ```
-cd PointPillars/
+cd /workspace
 python training/train.py --data_root your_path_to_kitti
 ```
 
 ## [Evaluation]
 
 ```
-cd PointPillars/
+cd /workspace
 python evaluation/evaluate.py --ckpt pretrained/epoch_160.pth --data_root your_path_to_kitti 
 ```
 
 ## [Test]
 
 ```
-cd PointPillars/
+cd /workspace
 
 # 1. infer and visualize point cloud detection
 python evaluation/test.py --ckpt pretrained/epoch_160.pth --pc_path your_pc_path 
@@ -226,21 +226,21 @@ The model is split for export purposes into `PointPillarsPre` (voxelization), `P
 1. PyTorch → ONNX
 
     ```
-    cd PointPillars/deployment
+    cd /workspace/deployment
     python pytorch2onnx.py --ckpt ../pretrained/epoch_160.pth --saved_onnx_path ../pretrained/model.onnx
     ```
 
 2. (Optional) FP32 → FP16 mixed-precision ONNX, in one step
 
     ```
-    cd PointPillars/deployment
+    cd /workspace/deployment
     ./export_onnx_fp16.sh ../pretrained/epoch_160.pth ../pretrained/model.onnx
     ```
 
 3. (Optional) ONNX inference / sanity check against the PyTorch output
 
     ```
-    cd PointPillars/deployment
+    cd /workspace/deployment
     python onnx_infer.py --pc_path ../pointpillars/dataset/demo_data/val/000134.bin --onnx_path ../pretrained/model.onnx
     python pytorch_infer.py --ckpt ../pretrained/epoch_160.pth --pc_path ../pointpillars/dataset/demo_data/val/000134.bin
     ```
