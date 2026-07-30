@@ -56,3 +56,8 @@ run_step "split_train_val.py" python3 "$SCRIPT_DIR/split_train_val.py" --data_ro
 run_step "generate_calib.py" python3 "$SCRIPT_DIR/generate_calib.py" --data_root "$DATA_ROOT"
 run_step "pre_process_kitti.py" python3 "$SCRIPT_DIR/pre_process_kitti.py" --data_root "$DATA_ROOT" --prefix avikus --min_pts_filter "$MIN_PTS_AFTER_FILTER" $COMPENSATE_IMU_FLAG
 run_step "set_anchor.py" python3 "$SCRIPT_DIR/set_anchor.py" --data_root "$DATA_ROOT"
+
+# ===============================
+# 결과 확인 (임의 프레임 3D 시각화)
+# ===============================
+run_step "vis_gt_pc.py" python3 "$SCRIPT_DIR/../../visualization/vis_gt_pc.py" --root "$DATA_ROOT"

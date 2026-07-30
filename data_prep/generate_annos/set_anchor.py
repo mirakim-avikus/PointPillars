@@ -9,6 +9,7 @@ def main(args):
         data = pickle.load(f)
     
     classes = data.keys()
+    print("======= PointPillars anchors per class (used for training) =======")
     print("L W H")
     for cls in classes:
         lwh = [0, 0, 0]
