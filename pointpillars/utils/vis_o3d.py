@@ -64,7 +64,12 @@ def bbox_obj(points, color=[1, 0, 0]):
 
 def vis_core(plys):
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    if not vis.create_window():
+        raise RuntimeError(
+            'Open3D failed to open a display window (see the GLFW error above this '
+            'traceback). Check DISPLAY matches the host\'s actual current display '
+            '(echo $DISPLAY on the host) and that xhost +local:docker has been run.'
+        )
     vis.get_render_option().point_size = 2.0
 
     PAR = os.path.dirname(os.path.abspath(__file__))
