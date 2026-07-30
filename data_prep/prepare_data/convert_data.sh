@@ -11,8 +11,9 @@ for subdir in "$DATA_ROOT"/*; do
     LIDAR_YAML="$subdir/lidar.yaml"
     LIDAR_YAML_BAK="$subdir/lidar.yaml.bak"
     NEW_LIDAR_YAML="$subdir/new_lidar.yaml"
+    YAML_CONVERTED_MARKER="$subdir/.yaml_converted"
 
-    if [ -f "$LIDAR_YAML_BAK" ]; then
+    if [ -f "$YAML_CONVERTED_MARKER" ]; then
         echo "⏭  Skip (already converted): $subdir"
         continue
     fi
@@ -21,12 +22,13 @@ for subdir in "$DATA_ROOT"/*; do
         # Session arrived with the yz-flip already applied upstream (no
         # separate original lidar.yaml to preserve) - just promote it.
         mv "$NEW_LIDAR_YAML" "$LIDAR_YAML"
-        touch "$LIDAR_YAML_BAK"  # marker: nothing to back up, already flipped on arrival
+        touch "$YAML_CONVERTED_MARKER"
         echo "▶ Processing: $subdir (new_lidar.yaml already provided, promoted -> lidar.yaml)"
     elif [ -f "$LIDAR_YAML" ]; then
         echo "▶ Processing: $subdir"
         mv "$LIDAR_YAML" "$LIDAR_YAML_BAK"
         python3 convert_lidar_rvec.py --lidar_yaml_path="$LIDAR_YAML_BAK" --output_path="$LIDAR_YAML"
+        touch "$YAML_CONVERTED_MARKER"
     else
         echo "⏭  Skip (no lidar.yaml or new_lidar.yaml): $subdir"
         continue

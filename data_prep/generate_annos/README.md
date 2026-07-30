@@ -9,7 +9,7 @@ DATA_ROOT/
 ├─ <data_name>/            # e.g. "boat_1" - one recording session
 │  ├─ images/               # .jpg, camera frames
 │  ├─ pcd/                  # .avikus.pcd, lidar frames (same timestamp convention as images/)
-│  ├─ lidar.yaml            # camera intrinsics + camera2lidar / reference2lidar(IMU) extrinsics (yz-flipped, converted by prepare_data/convert_data.sh; original backed up to lidar.yaml.bak)
+│  ├─ lidar.yaml            # camera intrinsics + camera2lidar / reference2lidar(IMU) extrinsics (yz-flipped, converted by prepare_data/convert_data.sh; original backed up to lidar.yaml.bak if one existed, marked done via .yaml_converted)
 │  ├─ frame_list.txt        # frame index -> pcd filename mapping
 │  │
 │  │  # exactly one of the following two identifies the session's label source:
