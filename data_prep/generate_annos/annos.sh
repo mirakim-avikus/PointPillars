@@ -51,6 +51,7 @@ fi
 # ===============================
 run_step "generate_superb_label.py" python3 "$SCRIPT_DIR/generate_superb_label.py" --data_root "$DATA_ROOT"
 run_step "generate_cvat_label.py" python3 "$SCRIPT_DIR/generate_cvat_label.py" --data_root "$DATA_ROOT"
+run_step "convert_label_z_center_to_bottom.py" python3 "$SCRIPT_DIR/convert_label_z_center_to_bottom.py" --data_root "$DATA_ROOT"
 run_step "split_train_val.py" python3 "$SCRIPT_DIR/split_train_val.py" --data_root "$DATA_ROOT"
 run_step "generate_calib.py" python3 "$SCRIPT_DIR/generate_calib.py" --data_root "$DATA_ROOT"
 run_step "pre_process_kitti.py" python3 "$SCRIPT_DIR/pre_process_kitti.py" --data_root "$DATA_ROOT" --prefix avikus --min_pts_filter "$MIN_PTS_AFTER_FILTER" $COMPENSATE_IMU_FLAG
