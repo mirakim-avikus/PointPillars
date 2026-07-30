@@ -6,6 +6,42 @@ Original Code : A Simple PointPillars PyTorch Implenmentation for 3D Lidar(KITTI
 - Only one detection network (PointPillars) was implemented in this repo, so the code may be more easy to read. 
 - Sincere thanks for the great open-source architectures [mmcv](https://github.com/open-mmlab/mmcv), [mmdet](https://github.com/open-mmlab/mmdetection) and [mmdet3d](https://github.com/open-mmlab/mmdetection3d), which helps me to learn 3D detetion and implement this repo.
 
+## Installation
+
+### 1) Docker container
+
+Build the docker image and start a container. This allows others to develop in exactly the same environment with a single command:
+
+```
+cd PointPillars/
+docker build -t custom-open3d-python-cu111 .
+docker run --name pointpillars --gpus all --runtime=nvidia --privileged --network=host \
+  --security-opt label=disable -e DISPLAY=:11.0 -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -v $(pwd):/workspace -it -d custom-open3d-python-cu111 bash
+
+// for Avikus server with four A100
+docker run -d --runtime=nvidia --gpus all  -it -d -v $(pwd):/workspace   --device=/dev/nvidia-uvm     --device=/dev/nvidia-uvm-tools     --device=/dev/nvidia-modeset     --device=/dev/nvidiactl     --device=/dev/nvidia0   --device=/dev/nvidia1  --device=/dev/nvidia2  --device=/dev/nvidia3  custom-open3d-python-cu111  bash -c "while [ true ]; do nvidia-smi -L; sleep 5; done"
+```
+
+`DISPLAY` must match the X display the host is actually using (check with `echo $DISPLAY`), and the host must allow the container to connect (`xhost +local:docker` or similar) for the open3d GUI viewer (e.g. `pointpillars/utils/vis_o3d.py`) to render.
+
+Once built, enter the running container with:
+
+```
+docker exec -it pointpillars bash
+```
+
+### 2) Install PointPillars package
+
+Install PointPillars as a python package and all its dependencies as follows (run this inside the container):
+
+```
+cd PointPillars/
+pip install -r requirements.txt
+python setup.py build_ext --inplace
+pip install .
+```
+
 ## Data Setting
 
 데이터는 아래 2개의 소스로부터 확보한다.
@@ -80,36 +116,6 @@ data_prep/
 pointpillars/   core package (dataset, model, ops, loss, utils) - installed via setup.py
 deployment/     ONNX/TensorRT export assets
 docs/           log.md - original implementation notes
-```
-
-## [Docker] 
-
-Build docker image and make docker container.
-This allows others to develop in exactly the same environment with a single command:
-
-```
-cd PointPillars/
-docker build -t custom-open3d-python-cu111 .
-docker run --name pointpillars --gpus all --runtime=nvidia --privileged --network=host \
-  --security-opt label=disable -e DISPLAY=:11.0 -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v $(pwd):/workspace -it -d custom-open3d-python-cu111 bash
-
-// for Avikus server with four A100
-docker run -d --runtime=nvidia --gpus all  -it -d -v $(pwd):/workspace   --device=/dev/nvidia-uvm     --device=/dev/nvidia-uvm-tools     --device=/dev/nvidia-modeset     --device=/dev/nvidiactl     --device=/dev/nvidia0   --device=/dev/nvidia1  --device=/dev/nvidia2  --device=/dev/nvidia3  custom-open3d-python-cu111  bash -c "while [ true ]; do nvidia-smi -L; sleep 5; done"
-```
-
-`DISPLAY` must match the X display the host is actually using (check with `echo $DISPLAY`), and the host must allow the container to connect (`xhost +local:docker` or similar) for the open3d GUI viewer (e.g. `pointpillars/utils/vis_o3d.py`) to render.
-
-
-## [Install] 
-
-Install PointPillars as a python package and all its dependencies as follows:
-
-```
-cd PointPillars/
-pip install -r requirements.txt
-python setup.py build_ext --inplace
-pip install .
 ```
 
 ## [Datasets]
