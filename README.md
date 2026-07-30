@@ -25,6 +25,8 @@ docker run -d --runtime=nvidia --gpus all  -it -d -v $(pwd):/workspace   --devic
 
 `DISPLAY` must match the X display the host is actually using (check with `echo $DISPLAY`), and the host must allow the container to connect (`xhost +local:docker` or similar) for the open3d GUI viewer (e.g. `pointpillars/utils/vis_o3d.py`) to render.
 
+If `docker build` fails with a TLS/certificate error (`SSLError`, `self signed certificate in certificate chain`, etc.), your network is TLS-inspecting outbound HTTPS traffic (e.g. a corporate SASE gateway) - see [`certs/README.md`](certs/README.md) for how to fix it.
+
 Once built, enter the running container with:
 
 ```

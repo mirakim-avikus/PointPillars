@@ -13,3 +13,4 @@ test_avikus.py
 data
 pretrained/*.trt
 pretrained/*.onnx
+certs/HD_Groups_CA.crt

@@ -10,8 +10,22 @@ RUN rm -f /etc/apt/sources.list.d/cuda*.list
 
 RUN apt-get update && apt-get install -y \
     python3.8 python3-pip python3.8-dev python3.8-distutils \
-    git wget curl build-essential cmake libgl1-mesa-glx \
+    git wget curl build-essential cmake libgl1-mesa-glx ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Some networks TLS-inspect all outbound HTTPS (e.g. a corporate SASE gateway),
+# presenting their own CA instead of the real one. If yours does, see
+# certs/README.md - drop your network's CA at certs/HD_Groups_CA.crt (gitignored,
+# never committed) before building. certs/00-placeholder.crt is an always-present
+# empty file so this glob has something to match even when no real cert is
+# needed; update-ca-certificates just skips it with a harmless warning.
+# pip doesn't use the OS trust store by default, so it needs pointing at it
+# explicitly too.
+COPY certs/*.crt /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 RUN apt-get update && apt-get install -y libglib2.0-0
 
