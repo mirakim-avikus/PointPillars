@@ -50,3 +50,8 @@ for subdir in "$DATA_ROOT"/*; do
         echo "  lidar/flippedData/ -> pcd/"
     fi
 done
+
+# ===============================
+# 결과 확인 (flip + calib 정합성 검증)
+# ===============================
+python3 project_points_to_img.py --root "$DATA_ROOT"
