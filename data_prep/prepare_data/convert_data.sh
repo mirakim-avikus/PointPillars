@@ -49,6 +49,8 @@ for subdir in "$DATA_ROOT"/*; do
         mv "$subdir/lidar/flippedData" "$subdir/pcd"
         echo "  lidar/flippedData/ -> pcd/"
     fi
+
+    python3 matching_jpg_pcd.py --dataset_dir="$subdir"
 done
 
 # ===============================
