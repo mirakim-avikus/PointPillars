@@ -73,7 +73,7 @@ def project_points_to_img(lidar_points, img, Rt, K, D):
     cam_points = (Rt @ lidar_hom.T).T
     cam_points = cam_points[cam_points[:, 2] > 0]
 
-    # color by distance, matching generate_annos/generate_superb_label.py's
+    # color by distance, matching generate_annos/generate_cvat_label.py's
     # project_lidar_to_image
     distance = np.linalg.norm(cam_points, axis=1)
     hsv = np.zeros((len(distance), 1, 3), dtype=np.uint8)

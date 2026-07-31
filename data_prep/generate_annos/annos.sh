@@ -49,7 +49,6 @@ fi
 # ===============================
 # pipeline
 # ===============================
-run_step "generate_superb_label.py" python3 "$SCRIPT_DIR/generate_superb_label.py" --data_root "$DATA_ROOT"
 run_step "generate_cvat_label.py" python3 "$SCRIPT_DIR/generate_cvat_label.py" --data_root "$DATA_ROOT"
 run_step "convert_label_z_center_to_bottom.py" python3 "$SCRIPT_DIR/convert_label_z_center_to_bottom.py" --data_root "$DATA_ROOT"
 run_step "split_train_val.py" python3 "$SCRIPT_DIR/split_train_val.py" --data_root "$DATA_ROOT"

@@ -36,7 +36,6 @@ inline int hard_voxelize(const at::Tensor &points, at::Tensor &voxels,
                          const int NDim = 3, const bool deterministic = true) {
   if (points.device().is_cuda()) {
     if (deterministic) {
-      std::cout << "with cuda!" << std::endl;
       return hard_voxelize_gpu(points, voxels, coors, num_points_per_voxel,
                                voxel_size, coors_range, max_points, max_voxels,
                                NDim);

@@ -2,9 +2,8 @@
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# legacy cvat-label pipeline, superseded by annos.sh (which now generates both
-# cvat and superb labels via generate_cvat_label.py / generate_superb_label.py).
-# Kept for reference / reprocessing old cvat_test data.
+# legacy cvat-label pipeline, superseded by annos.sh. Kept for reference /
+# reprocessing old cvat_test data.
 DATA_ROOT="$SCRIPT_DIR/../../cvat_test"
 
 # 환경 변수 전달

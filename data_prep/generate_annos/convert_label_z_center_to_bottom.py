@@ -3,15 +3,18 @@ import glob
 import os
 
 '''
-generate_superb_label.py and generate_cvat_label.py both convert their raw
-label sources' center-z to bottom-center-z, which is the convention
-bbox3d2corners (and therefore Avikus.__getitem__'s gt_bboxes_3d for
-training) expects. Raw captures that arrive with label/*.txt already
-populated skip both of those scripts entirely (no label_original/,
-meta/*.json, or tracklet_labels.xml to trigger them), so their z is still
-center-z. This finds those sessions and does the same center -> bottom
-conversion, once per session (tracked via a marker file so re-running
-annos.sh doesn't shift z twice).
+Converts SuperbAI-sourced label/*.txt from bbox-center z to bbox-bottom-
+center z, which is the convention bbox3d2corners (and therefore
+Avikus.__getitem__'s gt_bboxes_3d for training) expects. SuperbAI exports
+always arrive as plain label/*.txt (never label_original/ or meta/*.json in
+practice) with no tracklet_labels.xml (that's CVAT's signal, handled
+separately by generate_cvat_label.py), so "has label/, no tracklet_labels.xml"
+is what identifies a SuperbAI session here. Height is read from field 10
+(0-indexed) - empirically verified against real point-cloud extents across
+multiple sessions, not just assumed from the label format's field order.
+
+Runs once per session (tracked via a marker file so re-running annos.sh
+doesn't shift z twice).
 
 Label line format: name truncated occluded alpha bbox(4) dimensions(3)
 location(3) rotation_y [trailing_id]. dimensions/location are fields 8:11
@@ -23,8 +26,10 @@ MARKER_NAME = '.z_converted'
 
 
 def load_meta_dir_names(data_root):
-    # Mirrors generate_superb_label.py's meta_by_dir: keys are meta/**/*.json
-    # filenames split on the first '.', not the session dir name itself.
+    # Defensive only: meta/*.json has never actually shown up in real
+    # SuperbAI exports, but if it ever does, don't blindly z-shift that
+    # session here - keys are meta/**/*.json filenames split on the first
+    # '.', not the session dir name itself.
     meta_path = os.path.join(data_root, 'meta')
     if not os.path.isdir(meta_path):
         return set()
