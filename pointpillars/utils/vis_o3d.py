@@ -69,10 +69,13 @@ def vis_core(plys):
             'Open3D failed to open a display window (see the GLFW/X11 error above this '
             'traceback). If it says "Authorization required, but no authorization protocol '
             'specified", the container isn\'t authorized to use the host\'s X server - on '
-            'the HOST run `xhost +local:docker`, then retry. If it instead says the display '
-            'itself couldn\'t be opened, DISPLAY has drifted: check the host\'s current value '
-            'with `echo $DISPLAY` and pass it explicitly, e.g. '
-            '`docker exec -e DISPLAY=:<N>.0 <container> ...`.'
+            'the HOST run `xhost +si:localuser:root` (containers typically run as root; '
+            '`xhost +local:docker` does NOT work, "docker" isn\'t a real xhost family), then '
+            'retry. This doesn\'t persist across host reboots/X server restarts, so it may '
+            'need to be re-run occasionally. If it instead says the display itself couldn\'t '
+            'be opened, DISPLAY has drifted: check the host\'s current value with `echo '
+            '$DISPLAY` and pass it explicitly, e.g. `docker exec -e DISPLAY=:<N>.0 '
+            '<container> ...`.'
         )
     vis.get_render_option().point_size = 2.0
 
