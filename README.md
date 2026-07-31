@@ -128,7 +128,8 @@ evaluation/     evaluate.py, test.py, metric.py, AP_calculator.py, BEV_with_metr
 visualization/  bev_sorting.py, make_video.sh, test_o3d.py, vis_data_gt.py, vis_gt_pc.py
 data_prep/
   generate_annos/  annotation-generation pipeline (see data_prep/generate_annos/README.md)
-  prepare_data/    convert_data.sh, convert_lidar_rvec.py, pcd_flipper.py
+  prepare_data/    convert_data.sh <DATA_ROOT>, convert_lidar_rvec.py, pcd_flipper.py,
+                   matching_jpg_pcd.py, project_points_to_img.py
 pointpillars/   core package (dataset, model, ops, loss, utils) - installed via setup.py
 deployment/     ONNX/TensorRT export assets
 docs/           log.md - original implementation notes
