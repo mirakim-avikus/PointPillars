@@ -23,7 +23,9 @@ docker run --name pointpillars --gpus all --runtime=nvidia --privileged --networ
 docker run -d --runtime=nvidia --gpus all  -it -d -v $(pwd):/workspace   --device=/dev/nvidia-uvm     --device=/dev/nvidia-uvm-tools     --device=/dev/nvidia-modeset     --device=/dev/nvidiactl     --device=/dev/nvidia0   --device=/dev/nvidia1  --device=/dev/nvidia2  --device=/dev/nvidia3  custom-open3d-python-cu111  bash -c "while [ true ]; do nvidia-smi -L; sleep 5; done"
 ```
 
-`DISPLAY` must match the X display the host is actually using (check with `echo $DISPLAY`), and the host must allow the container to connect (`xhost +local:docker` or similar) for the open3d GUI viewer (e.g. `pointpillars/utils/vis_o3d.py`) to render.
+`DISPLAY` must match the X display the host is actually using (check with `echo $DISPLAY`), and the host must allow the container to connect (`xhost +local:docker` or similar) for the open3d GUI viewer (e.g. `pointpillars/utils/vis_o3d.py`) to render. If a GUI script (`vis_gt_pc.py`, `project_points_to_img.py`, etc.) fails with:
+- `Authorization required, but no authorization protocol specified` - the host hasn't authorized the container; run `xhost +local:docker` on the **host**, then retry.
+- `GLFW Error: X11: Failed to open display :N.N` - `DISPLAY` has drifted from what the host is currently using (common after reconnecting to the host); re-check `echo $DISPLAY` on the host and pass it explicitly, e.g. `docker exec -e DISPLAY=:<N>.0 <container> ...`.
 
 If `docker build` fails with a TLS/certificate error (`SSLError`, `self signed certificate in certificate chain`, etc.), your network is TLS-inspecting outbound HTTPS traffic (e.g. a corporate SASE gateway) - see [`certs/README.md`](certs/README.md) for how to fix it.
 
