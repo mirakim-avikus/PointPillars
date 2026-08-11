@@ -7,7 +7,7 @@ import sys
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(BASE))
 
-from pointpillars.utils import read_pickle, read_points, bbox_camera2lidar, bbox_avikus2lidar
+from pointpillars.utils import read_pickle, read_points
 from pointpillars.dataset import point_range_filter, object_range_filter, data_augment
 
 class BaseSampler():
@@ -61,11 +61,10 @@ class Avikus(Dataset):
         'buoy' : 0.4,
     }
 
-    def __init__(self, data_root, split, point_cloud_range, pts_prefix='velodyne_reduced'):
+    def __init__(self, data_root, split, point_cloud_range):
         assert split in ['train', 'val', 'trainval', 'test']
         self.data_root = data_root
         self.split = split
-        self.pts_prefix = pts_prefix
         self.data_infos = read_pickle(os.path.join(data_root, f'avikus_infos_{split}.pkl'))
         self.sorted_ids = list(self.data_infos.keys())
 
@@ -121,14 +120,9 @@ class Avikus(Dataset):
             data_info['image'], data_info['calib'], data_info['annos'], data_info['imu'], data_info['velodyne_path']
     
         # point cloud input
-        velodyne_path = data_info['velodyne_path'].replace('velodyne', self.pts_prefix)
-        pts_path = os.path.join(self.data_root, velodyne_path)
+        pts_path = os.path.join(self.data_root, data_info['velodyne_path'])
         pts = read_points(pts_path)
         pts[:, -1] = pts[:, -1] / 255.0
-
-        # calib input: for bbox coordinates transformation between Camera and Lidar.
-        # because
-        self.r0_rect = calib_info['R0_rect'].astype(np.float32)
 
         # annotations input
         annos_info = self.filter_by_occ_trunc(annos_info, occ_thr=1, trunc_thr=1)
@@ -164,7 +158,7 @@ class Avikus(Dataset):
  
 
 if __name__ == '__main__':
-    
-    kitti_data = Kitti(data_root='/mnt/ssd1/lifa_rdata/det/kitti', 
-                       split='train')
-    kitti_data.__getitem__(9)
+
+    avikus_data = Avikus(data_root='/mnt/ssd1/lifa_rdata/det/avikus',
+                          split='train', point_cloud_range=[0, -39.68, -3, 69.12, 39.68, 1])
+    avikus_data.__getitem__(9)
