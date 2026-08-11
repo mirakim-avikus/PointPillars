@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import torch
 from tqdm import tqdm
 import pdb
@@ -7,6 +8,9 @@ import cv2
 import yaml
 import numpy as np
 import re
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.utils import setup_seed, vis_pc, read_calib, keep_bbox_from_lidar_range, RunningMetrics, iou3d_fn_lidar, iou_bev_fn_lidar, PRAccumulator
 from pointpillars.dataset import Avikus, get_dataloader, POINT_CLOUD_RANGE

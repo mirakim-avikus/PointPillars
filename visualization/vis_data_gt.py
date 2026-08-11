@@ -3,6 +3,10 @@ import cv2
 import copy
 import numpy as np
 import os
+import sys
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.utils import read_points, read_calib, read_label, bbox_camera2lidar, vis_pc, bbox3d2corners,\
      points_lidar2image, vis_img_3d

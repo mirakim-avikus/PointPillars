@@ -2,9 +2,13 @@ import argparse
 import cv2
 import numpy as np
 import os
+import sys
 import torch
 import pdb
 import yaml
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.utils import setup_seed, read_points, read_calib, read_label, \
     keep_bbox_from_image_range, keep_bbox_from_lidar_range, vis_pc, \

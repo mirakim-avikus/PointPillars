@@ -10,7 +10,7 @@ import open3d as o3d
 
 import sys
 BASE = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../../')))
 
 from pointpillars.utils import bbox3d2corners
 

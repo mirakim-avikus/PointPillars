@@ -1,5 +1,10 @@
 import argparse
 import numpy as np
+import os
+import sys
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.utils import read_points, vis_pc
 

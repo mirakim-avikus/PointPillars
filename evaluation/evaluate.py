@@ -1,9 +1,13 @@
 import argparse
 import numpy as np
 import os
+import sys
 import torch
 import pdb
 from tqdm import tqdm
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.utils import setup_seed, keep_bbox_from_image_range, \
     keep_bbox_from_lidar_range, write_pickle, write_label, \

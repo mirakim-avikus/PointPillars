@@ -10,7 +10,7 @@ import yaml
 from pathlib import Path
 
 CUR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.abspath(os.path.join(CUR, '../')))
+sys.path.append(os.path.abspath(os.path.join(CUR, '../../')))
 
 from pointpillars.utils import read_points, write_points, read_calib, read_label, \
     write_pickle, remove_outside_points, get_points_num_in_bbox, \

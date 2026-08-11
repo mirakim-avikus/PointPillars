@@ -1,5 +1,6 @@
 import random
 import os
+import sys
 import argparse
 import pdb 
 
@@ -21,6 +22,10 @@ def main(args):
     dir_path_list = {}
     for dirpath, dirnames, filenames in os.walk(root_path):
         if os.path.basename(dirpath) == "label":
+            data_dir = os.path.dirname(dirpath)
+            if not os.path.exists(os.path.join(data_dir, "lidar.yaml")):
+                print(f"[FATAL] {os.path.basename(data_dir)}: no lidar.yaml", file=sys.stderr)
+                sys.exit(1)
             for fname in filenames:
                 if fname.endswith('.txt'):
                     full_path = os.path.join(dirpath, fname)

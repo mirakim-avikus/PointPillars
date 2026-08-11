@@ -2,6 +2,7 @@ import argparse
 import cv2
 import numpy as np
 import os
+import sys
 import onnx
 import onnxruntime
 import time
@@ -11,6 +12,9 @@ from pytorch2onnx import CLASSES, POINT_CLOUD_RANGE, VOXEL_SIZE
 SAVE_BIN = True
 DURATION = False
 RAW_POINTS = False
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.utils import read_points, keep_bbox_from_lidar_range, vis_pc
 from pointpillars.model import PointPillarsPre, PointPillarsPos

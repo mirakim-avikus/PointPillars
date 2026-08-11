@@ -2,6 +2,10 @@ import argparse
 import numpy as np
 import os
 import random
+import sys
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(BASE, '../')))
 
 from pointpillars.dataset import Avikus
 from pointpillars.utils import read_points, read_label, vis_pc
