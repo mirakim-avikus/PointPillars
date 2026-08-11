@@ -202,6 +202,8 @@ def main(args):
             rx = float(pose_item.findtext('rx'))
             ry = float(pose_item.findtext('ry'))
             rz = float(pose_item.findtext('rz'))
+            occluded = int(pose_item.findtext('occlusion', '0'))
+            truncated = int(pose_item.findtext('truncation', '0'))
 
             lidar_filename = frame_dict.get(first_frame)
             if lidar_filename is None:
@@ -239,12 +241,17 @@ def main(args):
             # annos에서 저장할 때 avikus2camera로 저장!
             annos = {
                 'name': np.array([object_type]),
-                'truncated': 0,
-                'occluded': 0,
+                'truncated': truncated,
+                'occluded': occluded,
                 'alpha': 0, # TODO : 확인해보기 (객체와의 각도) -> 사용하면 그때 값 작성하기
                 'bbox': [0.0, 0.0, 0.0, 0.0] ,
-                'dimensions': np.array([w, h, l]),
-                'location': np.array([tx, ty, tz - h/2]),
+                # CVAT's <w>/<h>/<l> tags don't hold what their names say - verified
+                # against real object shape (poles/markers tallest along H, boats
+                # longest along L): true W is tag <h>, true L is tag <w>, true H is
+                # tag <l>. anchors.py's box format is (x,y,z,w,l,h,theta), so this
+                # already stores dims in the order the rest of the pipeline expects.
+                'dimensions': np.array([h, w, l]),
+                'location': np.array([tx, ty, tz - l/2]),
                 'rotation_x': np.array([rx]),
                 'rotation_y': np.array([ry]),
                 'rotation_z': np.array([rz]),

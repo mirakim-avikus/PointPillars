@@ -37,8 +37,8 @@ def main(args):
 
         calib_path = os.path.join(calib_dir, "lidar.yaml")
         if not os.path.exists(calib_path):
-            print(f"[SKIP] {data_key}: no lidar.yaml")
-            continue
+            print(f"[FATAL] {data_key}: no lidar.yaml", file=sys.stderr)
+            sys.exit(1)
 
         with open(calib_path, 'rb') as f:
             calib = yaml.safe_load(f)

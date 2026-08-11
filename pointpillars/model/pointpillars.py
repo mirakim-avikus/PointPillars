@@ -271,7 +271,7 @@ class PointPillars(nn.Module):
         # anchors
         ranges = [point_cloud_range for _ in range(nclasses)]
         sizes = [[1.51, 3.36, 1.33], \
-                [4.16, 12.06, 4.83], # label[l, w, h] -> anchor_size[w, l, h] \
+                [2.47, 7.99, 3.57], \
                 [7.43, 27.49, 9.77], \
                 [2.01, 1.13, 4.37], \
                 [5.37, 11.69, 13.14], \

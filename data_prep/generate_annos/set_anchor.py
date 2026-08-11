@@ -61,18 +61,16 @@ def main(args):
 
     classes = data.keys()
     print("======= PointPillars anchors per class (used for training) =======")
-    print("L W H")
+    print("W L H")
     wlh_by_class = {}
     for cls in classes:
-        lwh = [0, 0, 0]
+        # box3d_lidar[3:6] is written by generate_cvat_label.py's `dimensions`
+        # field, already in anchors.py's (w, l, h) order - no reordering needed
+        # here.
         wlh = [0, 0, 0]
         for dct in data[cls]:
-            lwh += dct['box3d_lidar'][3:6]
-        lwh /= len(data[cls])
-        # wlh for anchor
-        wlh[0] = lwh[1]
-        wlh[1] = lwh[0]
-        wlh[2] = lwh[2]
+            wlh += dct['box3d_lidar'][3:6]
+        wlh /= len(data[cls])
 
         print(f'{cls} : {round(wlh[0], 2)}, {round(wlh[1], 2)}, {round(wlh[2], 2)}')
         wlh_by_class[cls] = (wlh[0], wlh[1], wlh[2])
