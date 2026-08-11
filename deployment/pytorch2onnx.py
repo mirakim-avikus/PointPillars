@@ -18,6 +18,15 @@ def main(args):
         model = PointPillarsCore(nclasses=len(CLASSES), voxel_size=VOXEL_SIZE, point_cloud_range=POINT_CLOUD_RANGE, prefix='avikus')
         model.load_state_dict(
             torch.load(args.ckpt, map_location=torch.device('cpu')))
+
+    # nms_pre caps how many anchors survive the in-graph TopK. With the
+    # default (100), near-duplicate anchors of the few highest-scoring objects
+    # consume every slot, so dense maritime frames (25+ targets) emit only
+    # 2-5 boxes no matter the score threshold. Raise it so each object can
+    # reach NMS.
+    model.nms_pre = args.nms_pre
+    print(f'nms_pre = {model.nms_pre}')
+
     model.eval()
 
 
@@ -44,11 +53,16 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Configuration Parameters')
-    parser.add_argument('--ckpt', default='../pretrained/epoch_160.pth', help='your checkpoint for kitti')
-    parser.add_argument('--saved_onnx_path', default='../pretrained/model.onnx',
+    parser.add_argument('--ckpt', default='../best.pth',
+                        help='checkpoint to export (../best.pth is the 10-class '
+                             'avikus model matching the deployed onnx)')
+    parser.add_argument('--saved_onnx_path', default='../pretrained/model_nmspre1000.onnx',
                         help='your saved onnx path')
     parser.add_argument('--no_cuda', action='store_true',
                         help='whether to use cuda')
+    parser.add_argument('--nms_pre', type=int, default=1000,
+                        help='anchors kept by the in-graph TopK before NMS '
+                             '(100 = original; too small for dense scenes)')
     args = parser.parse_args()
 
     main(args)
