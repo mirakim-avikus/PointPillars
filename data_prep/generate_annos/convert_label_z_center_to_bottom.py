@@ -13,8 +13,16 @@ is what identifies a SuperbAI session here. Height is read from field 10
 (0-indexed) - empirically verified against real point-cloud extents across
 multiple sessions, not just assumed from the label format's field order.
 
-Runs once per session (tracked via a marker file so re-running annos.sh
-doesn't shift z twice).
+Also swaps fields 8/9 (dims cols 0/1): SuperbAI's raw dims are physically
+[L, W, H] (verified the same way as height - checked against real object
+shape, not the field order) despite being nominally labeled W/H/L, but
+anchors.py's box format needs (w, l, h). CVAT sessions get this same fix in
+generate_cvat_label.py; this is the SuperbAI-side equivalent.
+
+Each conversion runs once per session, tracked by its own marker file so
+re-running annos.sh doesn't shift z / swap dims twice. They're separate
+markers on purpose: sessions z-converted by an earlier version of this
+script still need the dim swap applied without re-shifting z.
 
 Label line format: name truncated occluded alpha bbox(4) dimensions(3)
 location(3) rotation_y [trailing_id]. dimensions/location are fields 8:11
@@ -22,7 +30,8 @@ and 11:14 (0-indexed).
 '''
 
 EXCLUDE_DIRS = ['avikus_gt_database', 'testing', 'training', 'labels', 'meta', 'tmp']
-MARKER_NAME = '.z_converted'
+Z_MARKER = '.z_converted'
+DIMS_MARKER = '.dims_swapped'
 
 
 def load_meta_dir_names(data_root):
@@ -41,22 +50,28 @@ def load_meta_dir_names(data_root):
     return names
 
 
-def needs_conversion(data_root, dir_name, meta_dir_names):
+def pending_conversions(data_root, dir_name, meta_dir_names):
+    '''Returns the set of conversions this session still needs ('z', 'dims'),
+    or an empty set if it isn't a SuperbAI session / is already fully done.'''
     session_dir = os.path.join(data_root, dir_name)
     if not os.path.isdir(os.path.join(session_dir, 'label')):
-        return False
+        return set()
     if os.path.isdir(os.path.join(session_dir, 'label_original')):
-        return False
+        return set()
     if dir_name in meta_dir_names:
-        return False
+        return set()
     if os.path.exists(os.path.join(session_dir, 'tracklet_labels.xml')):
-        return False
-    if os.path.exists(os.path.join(session_dir, MARKER_NAME)):
-        return False
-    return True
+        return set()
+
+    pending = set()
+    if not os.path.exists(os.path.join(session_dir, Z_MARKER)):
+        pending.add('z')
+    if not os.path.exists(os.path.join(session_dir, DIMS_MARKER)):
+        pending.add('dims')
+    return pending
 
 
-def convert_session(session_dir):
+def convert_session(session_dir, pending):
     label_paths = sorted(glob.glob(os.path.join(session_dir, 'label', '*.txt')))
     for label_path in label_paths:
         with open(label_path, 'r') as f:
@@ -65,9 +80,14 @@ def convert_session(session_dir):
         new_lines = []
         for line in lines:
             fields = line.split(' ')
-            height = float(fields[10])
-            z_center = float(fields[13])
-            fields[13] = f'{z_center - height / 2:.2f}'
+            if 'z' in pending:
+                height = float(fields[10])
+                z_center = float(fields[13])
+                fields[13] = f'{z_center - height / 2:.2f}'
+            if 'dims' in pending:
+                # [L, W, H] -> [W, L, H]; field 10 (H) is untouched, so this is
+                # order-independent w.r.t. the z shift above.
+                fields[8], fields[9] = fields[9], fields[8]
             new_lines.append(' '.join(fields))
 
         with open(label_path, 'w') as f:
@@ -84,15 +104,24 @@ def main(args):
         session_dir = os.path.join(data_root, dir_name)
         if dir_name in EXCLUDE_DIRS or not os.path.isdir(session_dir):
             continue
-        if not needs_conversion(data_root, dir_name, meta_dir_names):
-            if os.path.exists(os.path.join(session_dir, 'label')) and os.path.exists(os.path.join(session_dir, MARKER_NAME)):
-                print(f'[SKIP] {dir_name}: already z-converted (marker present)')
+        pending = pending_conversions(data_root, dir_name, meta_dir_names)
+        if not pending:
+            if os.path.isdir(os.path.join(session_dir, 'label')) and os.path.exists(os.path.join(session_dir, Z_MARKER)):
+                print(f'[SKIP] {dir_name}: already converted (markers present)')
             continue
 
-        n_converted = convert_session(session_dir)
-        with open(os.path.join(session_dir, MARKER_NAME), 'w') as f:
-            f.write('')
-        print(f'[{dir_name}] label z center -> bottom converted ({n_converted} file(s))')
+        n_converted = convert_session(session_dir, pending)
+        for op, marker in (('z', Z_MARKER), ('dims', DIMS_MARKER)):
+            if op in pending:
+                with open(os.path.join(session_dir, marker), 'w') as f:
+                    f.write('')
+
+        applied = []
+        if 'z' in pending:
+            applied.append('z center -> bottom')
+        if 'dims' in pending:
+            applied.append('dims LWH -> WLH')
+        print(f'[{dir_name}] {", ".join(applied)} ({n_converted} file(s))')
 
 
 if __name__ == '__main__':
